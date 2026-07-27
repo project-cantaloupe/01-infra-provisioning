@@ -1,0 +1,26 @@
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+availability_zone = "ap-northeast-2a"
+
+# Replace these values with the team-approved governance metadata.
+owner       = "REPLACE_WITH_TEAM"
+cost_center = "REPLACE_WITH_COST_CENTER"
+data_class  = "REPLACE_WITH_DATA_CLASS"
+
+# Confirm that these ranges do not overlap GCP, on-prem, Pod, Service,
+# or VPN mesh CIDRs before the first apply.
+vpc_cidr = "10.20.0.0/16"
+
+public_subnet_cidrs = [
+  "10.20.0.0/24",
+]
+
+private_subnet_cidrs = [
+  "10.20.10.0/24",
+]
+
+# Add the VPN client or management network CIDR after its route is configured.
+management_cidrs = []
+
+# Add routed GCP and on-prem node, Pod, or VPN CIDRs before joining remote nodes.
+remote_cluster_cidrs = []

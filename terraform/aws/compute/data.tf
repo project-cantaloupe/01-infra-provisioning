@@ -1,5 +1,12 @@
-data "aws_availability_zones" "available" {
-  state = "available"
+data "terraform_remote_state" "network" {
+  backend = "s3"
+
+  config = {
+    bucket  = "cntlp-aws-tfstate"
+    key     = "aws/network/terraform.tfstate"
+    region  = var.aws_region
+    encrypt = true
+  }
 }
 
 # Canonical official Ubuntu 24.04 LTS AMI.
