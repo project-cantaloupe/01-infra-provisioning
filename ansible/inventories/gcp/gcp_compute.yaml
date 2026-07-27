@@ -1,0 +1,8 @@
+plugin: google.cloud.gcp_compute
+projects: ["{{ lookup('env', 'GCP_PROJECT') }}"]
+filters: ["status = RUNNING"]
+keyed_groups:
+  - key: labels.area
+    prefix: area
+  - key: labels.role
+    prefix: role

@@ -1,0 +1,10 @@
+# Terraform 이 붙인 태그가 그대로 Ansible 그룹이 된다.
+plugin: amazon.aws.aws_ec2
+regions: [ap-northeast-2]
+filters:
+  instance-state-name: running
+keyed_groups:
+  - key: tags.Area
+    prefix: area
+  - key: tags.Role
+    prefix: role

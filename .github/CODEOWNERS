@@ -1,0 +1,8 @@
+# 거버넌스 경로는 승인 없이 바꿀 수 없다.
+# @org/... 을 실제 GitHub 팀 이름으로 바꾼다.
+
+/terraform/modules/finops-tags/       @org/finops
+/terraform/modules/secops-baseline/   @org/secops
+/ansible/roles/security-hardening/    @org/secops
+
+*                                     @org/platform

@@ -1,0 +1,7 @@
+# telmate/proxmox 가 아니라 bpg/proxmox 를 쓴다 (telmate 는 방치 상태).
+plugin: community.general.proxmox
+url: "{{ lookup('env', 'PROXMOX_URL') }}"
+user: "{{ lookup('env', 'PROXMOX_USER') }}"
+token_id: "{{ lookup('env', 'PROXMOX_TOKEN_ID') }}"
+token_secret: "{{ lookup('env', 'PROXMOX_TOKEN_SECRET') }}"
+want_facts: true
