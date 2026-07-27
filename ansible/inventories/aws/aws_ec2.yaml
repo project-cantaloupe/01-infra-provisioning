@@ -3,8 +3,10 @@ plugin: amazon.aws.aws_ec2
 regions: [ap-northeast-2]
 filters:
   instance-state-name: running
+  "tag:org": cntlp
+  "tag:platform": aws
 keyed_groups:
-  - key: tags.Area
-    prefix: area
-  - key: tags.Role
+  - key: ec2_tags.platform
+    prefix: platform
+  - key: ec2_tags.role
     prefix: role
