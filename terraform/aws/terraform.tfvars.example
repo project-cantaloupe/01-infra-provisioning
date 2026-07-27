@@ -1,0 +1,25 @@
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+project_name   = "cantaloupe"
+
+# Confirm that these ranges do not overlap GCP, on-prem, Pod, Service,
+# or VPN mesh CIDRs before the first apply.
+vpc_cidr = "10.20.0.0/16"
+
+public_subnet_cidrs = [
+  "10.20.0.0/24",
+  "10.20.1.0/24",
+]
+
+# Replace this with the administrator's current public IPv4 CIDR.
+allowed_admin_cidrs = [
+  "192.0.2.10/32",
+]
+
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+control_plane_instance_type = "t3.medium"
+worker_instance_type        = "t3.medium"
+worker_count                 = 2
+
+root_volume_size = 30
