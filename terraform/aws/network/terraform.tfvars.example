@@ -1,0 +1,30 @@
+# 실제 AWS 계정 ID, 리전, 단일 Availability Zone으로 교체한다.
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+availability_zone = "ap-northeast-2a"
+
+# 아래 값은 팀에서 확정한 관리 태그 값으로 반드시 교체한다.
+owner       = "REPLACE_WITH_TEAM"
+cost_center = "REPLACE_WITH_COST_CENTER"
+data_class  = "REPLACE_WITH_DATA_CLASS"
+
+# 최초 apply 전에 GCP, On-Prem, Pod, Service, VPN CIDR과
+# 아래 네트워크 범위가 겹치지 않는지 확인한다.
+vpc_cidr = "10.20.0.0/16"
+
+# 향후 Public Load Balancer나 Gateway를 배치할 Public Subnet
+public_subnet_cidrs = [
+  "10.20.0.0/24",
+]
+
+# Control Plane과 Worker를 배치할 Private Subnet
+private_subnet_cidrs = [
+  "10.20.10.0/24",
+]
+
+# VPN 또는 관리망 라우팅을 구성한 뒤 해당 CIDR을 추가한다.
+# 빈 배열이면 외부 SSH 및 Kubernetes API 접근 규칙이 생성되지 않는다.
+management_cidrs = []
+
+# GCP/On-Prem 노드를 연결하기 전에 라우팅된 노드·Pod·VPN CIDR을 추가한다.
+remote_cluster_cidrs = []

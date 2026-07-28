@@ -1,10 +1,17 @@
-# Terraform 이 붙인 태그가 그대로 Ansible 그룹이 된다.
+# AWS EC2 API에서 실행 중인 Cantaloupe 인스턴스를 자동으로 찾는다.
+# Terraform이 붙인 태그가 그대로 Ansible 그룹이 된다.
 plugin: amazon.aws.aws_ec2
 regions: [ap-northeast-2]
 filters:
+  # 중지되거나 종료된 인스턴스는 inventory에서 제외한다.
   instance-state-name: running
+  # 다른 프로젝트나 플랫폼의 EC2가 섞이지 않도록 필수 태그로 제한한다.
+  "tag:org": cntlp
+  "tag:platform": aws
 keyed_groups:
-  - key: tags.Area
-    prefix: area
-  - key: tags.Role
+  # platform=aws → platform_aws 그룹
+  - key: ec2_tags.platform
+    prefix: platform
+  # role=control-plane/worker → role_control_plane/role_worker 그룹
+  - key: ec2_tags.role
     prefix: role
