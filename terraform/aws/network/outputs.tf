@@ -13,7 +13,7 @@ output "availability_zone" {
 
 # 향후 Public Load Balancer나 Gateway가 사용할 Subnet 목록
 output "public_subnet_ids" {
-  description = "Public subnet IDs consumed by the Compute state"
+  description = "Public subnet IDs consumed by the Egress state"
   value       = values(aws_subnet.public)[*].id
 }
 
