@@ -1,8 +1,18 @@
+# Terraform이 내려받은 Provider와 모듈 캐시
 .terraform/
+
+# 로컬 또는 원격 인프라 상태 파일
 *.tfstate
 *.tfstate.*
+
+# 계정·환경별 실제 변수 파일은 로컬에서만 관리한다.
+# terraform.tfvars.example 같은 예시 파일은 이 패턴에 포함되지 않는다.
 *.tfvars
 *.tfvars.json
+
+# 저장된 실행 계획
 *.tfplan
+
+# SSH 및 인증 개인키
 *.pem
 *.key

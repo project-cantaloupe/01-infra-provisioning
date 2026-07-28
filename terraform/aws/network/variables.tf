@@ -1,3 +1,4 @@
+# 잘못된 AWS 계정에 배포하지 않도록 실제 계정 ID를 필수로 받는다.
 variable "aws_account_id" {
   description = "AWS account ID allowed for this stack"
   type        = string
@@ -8,6 +9,7 @@ variable "aws_account_id" {
   }
 }
 
+# 배포 위치 설정
 variable "aws_region" {
   description = "AWS region"
   type        = string
@@ -25,6 +27,7 @@ variable "availability_zone" {
   }
 }
 
+# 비용 및 자원 관리에 사용하는 필수 태그 값
 variable "owner" {
   description = "Owning team tag in lowercase kebab-case"
   type        = string
@@ -55,6 +58,8 @@ variable "data_class" {
   }
 }
 
+# AWS VPC 전체 주소 범위
+# GCP, On-Prem, Kubernetes Pod/Service, VPN CIDR과 겹치면 라우팅할 수 없다.
 variable "vpc_cidr" {
   description = "VPC CIDR block; it must not overlap GCP, on-prem, Pod, Service, or VPN CIDRs"
   type        = string
@@ -66,6 +71,7 @@ variable "vpc_cidr" {
   }
 }
 
+# 향후 인터넷 공개 Load Balancer나 Gateway를 배치할 Public Subnet
 variable "public_subnet_cidrs" {
   description = "One public subnet CIDR block for the single-AZ PoC"
   type        = list(string)
@@ -82,6 +88,7 @@ variable "public_subnet_cidrs" {
   }
 }
 
+# Control Plane과 Worker EC2를 배치할 Private Subnet
 variable "private_subnet_cidrs" {
   description = "One private subnet CIDR block for Kubernetes nodes in the single-AZ PoC"
   type        = list(string)
@@ -98,6 +105,8 @@ variable "private_subnet_cidrs" {
   }
 }
 
+# VPN이나 사내 관리망처럼 SSH 및 Kubernetes API 접근을 허용할 CIDR 목록
+# 빈 배열이면 외부 관리 접근용 Security Group 규칙을 만들지 않는다.
 variable "management_cidrs" {
   description = "VPN or other routed CIDRs allowed to access SSH and the Kubernetes API"
   type        = list(string)
@@ -111,6 +120,8 @@ variable "management_cidrs" {
   }
 }
 
+# 라우팅이 연결된 GCP/On-Prem 노드·Pod·VPN CIDR 목록
+# 빈 배열이면 AWS 외부 클러스터 트래픽을 허용하지 않는다.
 variable "remote_cluster_cidrs" {
   description = "Routed GCP and on-prem node, Pod, or VPN CIDRs allowed to communicate with AWS Kubernetes nodes"
   type        = list(string)
