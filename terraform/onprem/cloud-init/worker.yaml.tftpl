@@ -1,0 +1,27 @@
+#cloud-config
+# 여기서는 접속에 필요한 최소한만 한다.
+# swap off, 커널 모듈, sysctl, containerd 는 전부 ansible 롤이 맡는다
+# (common → security-hardening → vpn-mesh → containerd → kubeadm-worker).
+# 같은 일을 두 곳에서 하면 어느 쪽이 이겼는지 나중에 알 수 없다.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+users:
+  - name: ${username}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+%{ for key in ssh_public_keys ~}
+      - ${key}
+%{ endfor ~}
+
+package_update: true
+packages:
+  # 이게 없으면 Proxmox 가 VM 의 IP 를 모르고,
+  # ansible 인벤토리(want_facts)도 ansible_host 를 못 채운다.
+  - qemu-guest-agent
+
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent]

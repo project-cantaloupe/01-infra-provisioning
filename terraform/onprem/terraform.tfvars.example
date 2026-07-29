@@ -1,0 +1,51 @@
+# 이 파일을 terraform.tfvars 로 복사해 채운다.
+# terraform.tfvars 는 .gitignore 에 걸려 있다 (*.tfvars).
+
+# ── Proxmox 접속 ────────────────────────────────────────────────
+# 토큰 발급:
+#   pveum user token add terraform@pve provisioning --privsep 0
+# 출력된 `full-tokenid` 와 `value` 를 아래 형식으로 합친다.
+# ansible 인벤토리도 같은 토큰을 쓴다:
+#   export PROXMOX_URL=... PROXMOX_USER=... PROXMOX_TOKEN_ID=... PROXMOX_TOKEN_SECRET=...
+
+proxmox_endpoint  = "https://192.168.0.10:8006/"
+proxmox_api_token = "terraform@pve!provisioning=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+proxmox_node      = "pve"
+
+# ── 데이터스토어 ────────────────────────────────────────────────
+# snippet_datastore_id 는 `snippets` 콘텐츠 타입이 켜져 있어야 한다.
+#   Datacenter → Storage → (해당 스토리지) → Edit → Content 에 Snippets 추가
+
+vm_datastore_id      = "local-lvm"
+image_datastore_id   = "local"
+snippet_datastore_id = "local"
+
+# ── OS 이미지 ───────────────────────────────────────────────────
+# 체크섬은 직접 확인해서 넣는다:
+#   curl -s https://cloud-images.ubuntu.com/noble/current/SHA256SUMS \
+#     | grep noble-server-cloudimg-amd64.img
+
+os_image_checksum = "<sha256 를 여기 붙여넣는다>"
+
+# ── 워커 VM ─────────────────────────────────────────────────────
+# 기본값이 1대 / 8 vCPU / 16GB / 120GB 다. 바꿀 때만 적는다.
+# worker_disk 를 올릴 때는 local-lvm 의 실제 크기를 먼저 본다 (`pvesm status`).
+# 256GB 디스크라도 VM 이 쓸 수 있는 것은 local-lvm 쪽뿐이다.
+# worker_count  = 1
+# worker_cpu    = 8
+# worker_memory = 16384
+# worker_disk   = 120
+
+ssh_public_keys = [
+  "ssh-ed25519 AAAA... you@example.com",
+]
+
+# ── 네트워크 ────────────────────────────────────────────────────
+# 고정 IP 를 권한다. DHCP 를 쓸 거면 이 두 줄을 지우고
+# 공유기에서 MAC 예약을 걸어둔다 — K8s 노드는 IP 가 바뀌면 곤란하다.
+
+worker_ipv4_addresses = ["192.168.0.51/24"]
+ipv4_gateway          = "192.168.0.1"
+
+# network_bridge  = "vmbr0"
+# network_vlan_id = null
