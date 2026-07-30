@@ -10,7 +10,7 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 노드�
 |---|---|
 | `org` | `cntlp` |
 | `platform` | `aws` |
-| `role` | `control-plane` 또는 `worker` |
+| `role` | `control-plane` 또는 `service` |
 
 ## 자동화 범위
 
@@ -83,7 +83,7 @@ export CNTLP_TAILSCALE_AUTH_KEY='Tailscale에서 발급받은 키'
 
 ```bash
 ansible-inventory --graph
-ansible role_control_plane:role_worker -m ansible.builtin.ping
+ansible platform_aws:platform_gcp:platform_onp -m ansible.builtin.ping
 
 ansible-playbook playbooks/site-cluster.yaml --syntax-check
 ansible-playbook playbooks/site-cluster.yaml
@@ -123,11 +123,7 @@ ansible-playbook playbooks/site-verify.yaml
 
 ## GCP와 On-Prem Worker
 
-역할은 `platform=gcp|onp` Worker도 처리하도록 작성되어 있지만, 현재 기본
-인벤토리는 AWS만 활성화되어 있다. 이미 수동 join한 GCP·On-Prem 노드는
-`site-node-labels.yaml`이 이름을 기준으로 필수 라벨을 보정하고 검증한다.
-
-새 GCP·On-Prem VM의 OS 준비와 자동 join까지 수행하려면 각 플랫폼의 동적
-인벤토리, Ansible 컨트롤 노드에서 해당 VM으로 가는 SSH 경로, 그룹 변수를
-먼저 완성해야 한다. 접속 정보나 고정 IP를 이 저장소의 정적 `hosts.ini`에
-복사하지 않는다.
+GCP와 On-Prem도 동적 인벤토리를 사용한다. GCP VM에는 Terraform이
+`platform=gcp`와 `role=monitoring|logging`을, Proxmox VM에는
+`platform-onp`와 `role-devops`를 부여한다. 접속 정보나 고정 IP를 정적
+`hosts.ini`에 복사하지 않는다.
