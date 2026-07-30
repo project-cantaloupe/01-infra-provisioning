@@ -131,6 +131,6 @@ resource "aws_instance" "worker" {
   # Ansible 동적 inventory가 role 태그로 Worker를 그룹화한다.
   tags = {
     Name = local.worker_names[count.index]
-    role = "worker"
+    role = "service"
   }
 }

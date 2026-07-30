@@ -51,16 +51,6 @@ variable "owner" {
   }
 }
 
-variable "cost_center" {
-  description = "Cost center tag in lowercase kebab-case"
-  type        = string
-
-  validation {
-    condition     = can(regex("^[a-z0-9]+(-[a-z0-9]+)*$", var.cost_center))
-    error_message = "cost_center must use lowercase kebab-case, for example cc-1042."
-  }
-}
-
 variable "data_class" {
   description = "Data classification tag in lowercase kebab-case"
   type        = string

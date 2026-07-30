@@ -4,7 +4,6 @@ aws_region     = "ap-northeast-2"
 
 # Network 상태와 동일한 팀 관리 태그 값을 사용한다.
 owner       = "REPLACE_WITH_TEAM"
-cost_center = "REPLACE_WITH_COST_CENTER"
 data_class  = "REPLACE_WITH_DATA_CLASS"
 
 # AWS EC2 Key Pair에 등록할 로컬 SSH 공개키 경로

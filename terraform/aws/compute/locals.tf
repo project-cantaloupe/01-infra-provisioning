@@ -14,12 +14,11 @@ locals {
   # 모든 AWS 자원에 Provider default_tags로 적용할 필수 태그다.
   # Name과 role처럼 노드별로 달라지는 태그는 각 resource 블록에서 추가한다.
   default_tags = {
-    org           = local.org_token
-    owner         = var.owner
-    "cost-center" = var.cost_center
-    "managed-by"  = "terraform"
-    "data-class"  = var.data_class
-    lifecycle     = "permanent"
-    platform      = local.platform
+    org          = local.org_token
+    owner        = var.owner
+    "managed-by" = "terraform"
+    "data-class" = var.data_class
+    lifecycle    = "permanent"
+    platform     = local.platform
   }
 }
