@@ -1,0 +1,10 @@
+---
+- name: vault 재시작
+  ansible.builtin.systemd:
+    name: vault
+    state: restarted
+    daemon_reload: true
+
+- name: systemd 재적재
+  ansible.builtin.systemd:
+    daemon_reload: true

@@ -1,0 +1,43 @@
+---
+# Vault 서버 한 대를 구성한다.
+#
+# site-prerequisites.yaml 과 분리한 이유는 롤 구성이 다르기 때문이다.
+# Vault 노드는 K8s 노드가 아니라 containerd·kubeadm-common 이 필요 없다.
+# 그쪽 플레이북의 hosts 패턴에서 !role_secrets 로 빼두었다.
+#
+# **hosts 를 role_secrets 로 잡는다.** platform_aws 로 잡으면 나중에 이 그룹에
+# 들어올 컨트롤플레인·워커에도 Vault 가 깔린다.
+# 태그는 terraform/aws/vault/compute.tf 가 role = "secrets" 로 붙인다.
+#
+# ── 순서 ────────────────────────────────────────────────────────
+#
+# vpn-mesh 가 vault-server 보다 앞이다. Vault 의 TLS 도메인과 api_addr 이
+# tailnet 이름에서 나오고, 접근 경로도 메시뿐이다.
+#
+# **egress 스택이 먼저 apply 돼 있어야 한다.** Private Subnet 이라 NAT 없이는
+# apt 도 tailnet 조인도 나가지 못한다 — terraform/aws/vault/data.tf 의
+# check 블록이 그것을 검사한다.
+#
+# ── 실행 ────────────────────────────────────────────────────────
+#
+#   export AWS_PROFILE=cntlp
+#   export CNTLP_TAILSCALE_AUTH_KEY=tskey-auth-...     # ephemeral 로 발급한다
+#   cd ansible
+#   ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-vault.yaml \
+#     -e vault_awskms_key_id=$(terraform -chdir=../terraform/aws/vault output -raw vault_kms_key_id)
+#
+# 이 플레이북은 Vault 를 **초기화하지 않는다.** `vault operator init` 은 사람이
+# 한다 — docs/runbook-vault.md
+- name: Vault 서버 구성
+  hosts: role_secrets
+  become: true
+  gather_facts: true
+  roles:
+    - role: common
+      tags: [os, common]
+    - role: security-hardening
+      tags: [os, security]
+    - role: vpn-mesh
+      tags: [mesh]
+    - role: vault-server
+      tags: [vault]

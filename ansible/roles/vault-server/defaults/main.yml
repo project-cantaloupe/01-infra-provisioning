@@ -1,0 +1,49 @@
+---
+# Vault 서버 버전. **2.x 라인이다** (1.21.x 가 이전 라인).
+# apt 패키지 이름은 "<버전>-1" 형식이다 — apt-cache madison vault 로 확인한다.
+#
+# 버전을 고정하는 이유는 raft 가 다운그레이드를 허용하지 않기 때문이다.
+# state: latest 로 두면 실행 시점마다 다른 버전이 깔리고, 한 번 올라간 뒤에는
+# 되돌릴 수 없다.
+#
+# 워크스테이션의 vault CLI 와 같은 버전을 쓴다 — scripts/bootstrap-workstation.sh
+# 가 같은 apt 저장소에서 최신을 깐다. 크게 어긋나면 CLI 가 서버의 새 API 를
+# 모를 수 있다.
+vault_version: "2.0.3"
+vault_apt_version: "{{ vault_version }}-1"
+
+vault_config_dir: /etc/vault.d
+vault_data_dir: /opt/vault/data
+vault_tls_dir: /opt/vault/tls
+
+# ── auto-unseal ────────────────────────────────────────────────
+#
+# terraform/aws/vault 의 출력을 넘긴다:
+#   ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-vault.yaml \
+#     -e vault_awskms_key_id=$(terraform -chdir=../terraform/aws/vault output -raw vault_kms_key_id)
+#
+# 비어 있으면 이 롤은 멈춘다. 없이 진행하면 Vault 가 shamir seal 로 서고
+# 재부팅마다 사람이 unseal 해야 하는데, **그 상태가 정상으로 보인다.**
+vault_awskms_key_id: ""
+vault_awskms_region: ap-northeast-2
+
+# ── TLS ────────────────────────────────────────────────────────
+#
+# tailnet 인증서를 쓴다 (`tailscale cert`). 자체서명을 쓰면 워크스테이션·
+# terraform·ansible 각각에 CA 를 신뢰시켜야 하고, 빼먹으면 x509 오류가
+# 세 군데서 따로 터진다.
+#
+# 비워두면 롤이 `tailscale status` 의 DNSName 에서 읽는다.
+# terraform 은 이 값을 모른다 — tailnet 이름은 AWS 자원이 아니다.
+vault_tls_domain: ""
+
+# 인증서 유효기간이 90일이다. 갱신을 사람이 기억하면 반드시 잊는다.
+vault_cert_renew_calendar: weekly
+
+# raft 노드 ID. 단일 노드지만 raft 가 요구한다.
+# 인스턴스를 교체하면 hostname 이 같으므로 이 값도 같다 — 스냅샷 복구가 쉬워진다.
+vault_raft_node_id: "{{ ansible_facts.hostname }}"
+
+# API 포트. 8201 은 raft 클러스터 포트로 함께 쓰인다.
+vault_api_port: 8200
+vault_cluster_port: 8201
