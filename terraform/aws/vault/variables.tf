@@ -87,3 +87,15 @@ variable "kms_deletion_window_days" {
     error_message = "kms_deletion_window_days must be between 7 and 30."
   }
 }
+
+# EICE Security Group 이름. Network 스택이 "${name_prefix}-eice-sg" 로 만든다
+# (terraform/aws/network/eice.tf). 이름으로 찾는 이유는 data.tf 주석에 있다.
+#
+# 못 찾으면 SSH ingress 규칙이 만들어지지 않는다 — apply 는 성공하고 접속만
+# 안 된다. EICE 가 꺼져 있을 때는 그게 맞는 동작이고, 켜져 있는데 이름이
+# 다르면 조용히 틀린다. 이름을 바꿀 일이 생기면 여기도 바꾼다.
+variable "eice_security_group_name" {
+  description = "EICE security group name created by the Network stack"
+  type        = string
+  default     = "cntlp-aws-eice-sg"
+}

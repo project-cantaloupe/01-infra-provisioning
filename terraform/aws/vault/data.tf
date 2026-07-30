@@ -78,3 +78,25 @@ data "aws_ami" "ubuntu" {
     values = ["ebs"]
   }
 }
+
+# ── EICE Security Group 을 이름으로 찾는다 ──────────────────────
+#
+# remote_state 로 읽지 않는다. Network 스택에 output 을 추가하면 그 스택을 다시
+# apply 해야 하는데, **그건 이 태스크가 감당할 위험이 아니다.**
+# terraform.tfvars 가 리포에 없어서(gitignored) enable_eice·CIDR 값을 모르고,
+# 값을 빠뜨린 채 apply 하면 살아 있는 EICE 를 지우려 든다.
+#
+# aws_security_groups(복수형)를 쓰는 이유는 **없을 때 에러가 아니라 빈 목록을
+# 반환하기 때문**이다. EICE 는 enable_eice 로 켜고 끄는 한시적 자원이라
+# 없는 상태가 정상적으로 존재한다. 단수형 data source 는 그때 apply 를 깨뜨린다.
+data "aws_security_groups" "eice" {
+  filter {
+    name   = "vpc-id"
+    values = [data.terraform_remote_state.network.outputs.vpc_id]
+  }
+
+  filter {
+    name   = "group-name"
+    values = [var.eice_security_group_name]
+  }
+}

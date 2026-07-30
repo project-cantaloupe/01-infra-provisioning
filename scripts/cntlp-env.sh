@@ -33,8 +33,9 @@
 #   inventories/onp/group_vars/platform_onp.yml 이 이미 갖고 있다.
 #   CNTLP_SSH_KEY 는 그 기본값을 **덮으려는** 사람이 직접 쓰는 변수다.
 # - **terraform 에는 아무 영향이 없다.** terraform 은 tfvars 를 직접 읽는다.
-# - **온프렘 전용이다.** AWS·GCP 인벤토리는 다른 자격증명(AWS 자격증명,
-#   GCP_PROJECT)을 요구하는데 여기서 다루지 않는다.
+# - **GCP 는 다루지 않는다.** GCP_PROJECT 와 서비스 계정은 직접 세운다.
+#   (AWS 는 2026-07-30 부터 여기서 다룬다 — aws login 세션을 boto3 가 읽을 수
+#    있는 환경변수로 옮긴다. 아래 본문 참고)
 #
 # ── 인벤토리가 tfvars 를 직접 읽게 하지 않는 이유 ───────────────
 #
@@ -87,6 +88,39 @@ _cntlp_env() {
   export PROXMOX_TOKEN_ID="${BASH_REMATCH[2]}"
   export PROXMOX_TOKEN_SECRET="${BASH_REMATCH[3]}"
 
+  # ── AWS 자격증명을 boto3 가 읽을 수 있게 옮긴다 ─────────────────
+  #
+  # **`aws` CLI 가 되는데 ansible 이 안 되는 상태가 실제로 생긴다.**
+  #
+  # `aws login` 으로 로그인하면 자격증명이 ~/.aws/login/ 에 세션으로 저장되고
+  # ~/.aws/config 에 `login_session` 이 박힌다. ~/.aws/credentials 는 만들어지지
+  # 않는다. terraform 의 Go SDK 는 그 형식을 읽지만 **apt 로 깐 boto3 는 못
+  # 읽는다.** 그래서 terraform apply 는 성공하는데 AWS 동적 인벤토리만
+  # "Unable to locate credentials" 로 죽는다 — 같은 셸에서 한쪽만 되니
+  # 자격증명 문제로 보이지 않는다.
+  #
+  # `aws configure export-credentials` 가 세션을 표준 환경변수로 뱉어준다.
+  # 그걸 export 하면 boto3 가 env 체인으로 찾는다.
+  #
+  # 세션이므로 만료가 있다. 만료 시각을 찍어서 "어제는 됐는데" 를 막는다.
+  if command -v aws >/dev/null 2>&1; then
+    local aws_env
+    if aws_env="$(aws configure export-credentials --format env 2>/dev/null)" \
+       && [[ -n "$aws_env" ]]; then
+      eval "$aws_env"
+      export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+      # 리전은 세션에 없다. 인벤토리와 backend.tf 가 쓰는 값과 같아야 한다.
+      export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-ap-northeast-2}"
+    else
+      # 멈추지 않는다. 온프렘 작업에는 AWS 가 필요 없다.
+      echo "warn: AWS 자격증명을 내보내지 못했다. AWS 동적 인벤토리가" >&2
+      echo "      \"Unable to locate credentials\" 로 실패한다.  aws login 을 먼저 한다." >&2
+    fi
+  else
+    echo "warn: aws CLI 가 없다. AWS 인벤토리와 EICE 터널을 쓸 수 없다." >&2
+    echo "      ./scripts/bootstrap-workstation.sh 를 돌린다." >&2
+  fi
+
   # ansible.cfg 는 cwd 에서만 자동으로 읽힌다. 어디서 돌려도 잡히게 고정한다.
   export ANSIBLE_CONFIG="${repo}/ansible/ansible.cfg"
 
@@ -100,6 +134,10 @@ _cntlp_env() {
   printf '환경 설정 완료 — PROXMOX_URL=%s PROXMOX_USER=%s (토큰 2개 설정됨)\n' \
     "$PROXMOX_URL" "$PROXMOX_USER"
   printf 'ANSIBLE_CONFIG=%s\n' "$ANSIBLE_CONFIG"
+
+  if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
+    printf 'AWS 자격증명 설정됨 — 만료 %s\n' "${AWS_CREDENTIAL_EXPIRATION:-(없음)}"
+  fi
 }
 
 _cntlp_env

@@ -32,9 +32,7 @@ resource "aws_security_group" "vault" {
   # EICE는 lifecycle=temporary 자원이다. 지운 뒤 Vault를 다시 세우려면
   # 한시적으로 다시 켜야 한다 — docs/runbook-vault.md
   dynamic "ingress" {
-    for_each = compact([
-      data.terraform_remote_state.network.outputs.eice_security_group_id,
-    ])
+    for_each = toset(data.aws_security_groups.eice.ids)
 
     content {
       description     = "SSH from EC2 Instance Connect Endpoint"
