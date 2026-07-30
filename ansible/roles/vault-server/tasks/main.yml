@@ -221,6 +221,46 @@
     - vault.hcl.dpkg-dist
     - vault.hcl.dpkg-old
 
+# ── 4b. 감사 로그 자리 ──────────────────────────────────────────
+#
+# **감사 장치는 terraform/vault 스택이 API 로 켠다** (초기화 전에는 켤 수 없어서
+# 이 롤이 할 수 없다). 그런데 그 apply 는 **디렉터리가 없으면 실패한다.**
+# 그래서 자리만 여기서 만든다.
+#
+# 그리고 더 중요한 것 — 감사 장치가 하나라도 켜져 있으면 **로그를 쓸 수 없을 때
+# Vault 가 요청을 거부한다.** 디스크가 차면 Vault 가 멈춘다는 뜻이다. 의도된
+# 동작이지만(감사 없이 시크릿을 내주지 않는다) rotate 가 없으면 그 일이
+# 반드시 일어난다.
+
+- name: 감사 로그 디렉터리를 만든다
+  ansible.builtin.file:
+    path: "{{ vault_audit_log_path | dirname }}"
+    state: directory
+    owner: vault
+    group: vault
+    mode: "0750"
+
+# copytruncate 를 쓰지 않는다. Vault 는 파일을 다시 열 수 있고(mode 옵션),
+# copytruncate 는 복사와 truncate 사이에 쓰인 줄을 잃는다 — 감사 로그에서
+# 줄을 잃는 것은 없는 것과 비슷하다.
+- name: 감사 로그 rotate 를 넣는다
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/vault-audit
+    mode: "0644"
+    content: |
+      {{ vault_audit_log_path }} {
+          daily
+          rotate {{ vault_audit_log_rotate_days }}
+          missingok
+          notifempty
+          compress
+          delaycompress
+          create 0600 vault vault
+          postrotate
+              /bin/systemctl reload vault > /dev/null 2>&1 || true
+          endscript
+      }
+
 # ── 5. 서비스 ───────────────────────────────────────────────────
 
 - name: vault 를 켠다
