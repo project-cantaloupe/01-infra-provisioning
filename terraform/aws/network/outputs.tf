@@ -53,6 +53,14 @@ output "worker_security_group_id" {
   value       = aws_security_group.worker.id
 }
 
+# EICE에서 시작한 SSH만 허용하는 ingress 규칙을 다른 스택이 만들 때 필요하다.
+# cluster Security Group은 이 스택 안에 있어서 직접 참조하지만, Vault처럼
+# 별도 스택의 노드는 이 값을 remote_state로 읽어야 한다.
+output "eice_security_group_id" {
+  description = "EICE security group ID consumed by stacks that add their own SSH ingress rule"
+  value       = var.enable_eice ? aws_security_group.eice[0].id : null
+}
+
 # EICE 비활성화 시 null을 반환.
 output "eice_id" {
   description = "EC2 Instance Connect Endpoint ID when EICE is enabled"
