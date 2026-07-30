@@ -1,0 +1,13 @@
+---
+# 사전 준비 플레이에서는 패키지를 관리하고 후속 플레이에서는 상태만 재확인한다.
+tailscale_manage_packages: true
+
+# 새 노드의 최초 가입에만 사용한다. 값은 저장소가 아닌 실행 환경에서 받는다.
+tailscale_auth_key: >-
+  {{
+    lookup('env', 'CNTLP_TAILSCALE_AUTH_KEY')
+    | default('', true)
+  }}
+
+tailscale_auth_key_path: /run/cntlp-tailscale-auth-key
+tailscale_hostname: "{{ ansible_facts.hostname }}"

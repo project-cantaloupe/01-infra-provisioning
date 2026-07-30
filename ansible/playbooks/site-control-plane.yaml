@@ -1,0 +1,13 @@
+---
+# 단일 Control Plane을 Tailscale 주소로 초기화한다.
+- name: Kubernetes Control Plane 구성
+  hosts: role_control_plane
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/cluster.yml
+  roles:
+    - role: vpn-mesh
+      vars:
+        tailscale_manage_packages: false
+    - kubeadm-control-plane

@@ -1,0 +1,26 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: "{{ tailscale_ipv4 }}"
+  bindPort: {{ kubernetes_control_plane_port }}
+nodeRegistration:
+  name: "{{ ansible_facts.hostname }}"
+  criSocket: "{{ kubernetes_cri_socket }}"
+  imagePullPolicy: IfNotPresent
+  kubeletExtraArgs:
+    - name: node-ip
+      value: "{{ tailscale_ipv4 }}"
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: "{{ kubernetes_cluster_name }}"
+kubernetesVersion: "{{ kubernetes_version }}"
+controlPlaneEndpoint: "{{ tailscale_ipv4 }}:{{ kubernetes_control_plane_port }}"
+apiServer:
+  certSANs:
+    - "{{ tailscale_ipv4 }}"
+    - "{{ ansible_facts.hostname }}"
+networking:
+  dnsDomain: "{{ kubernetes_dns_domain }}"
+  serviceSubnet: "{{ kubernetes_service_cidr }}"
+  podSubnet: "{{ kubernetes_pod_cidr }}"

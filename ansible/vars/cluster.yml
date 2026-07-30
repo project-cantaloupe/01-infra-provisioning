@@ -1,0 +1,18 @@
+---
+# 단일 Cantaloupe Kubernetes 클러스터의 공통 설정이다.
+# Tailscale IP는 노드마다 실행 시 조회하므로 이 파일에 저장하지 않는다.
+kubernetes_cluster_name: cntlp-k8s
+kubernetes_version: v1.36.3
+kubernetes_minor_version: v1.36
+kubernetes_package_version: 1.36.3-1.1
+kubernetes_control_plane_port: 6443
+kubernetes_pod_cidr: 10.244.0.0/16
+kubernetes_service_cidr: 10.96.0.0/12
+kubernetes_dns_domain: cluster.local
+kubernetes_cri_socket: unix:///var/run/containerd/containerd.sock
+kubernetes_admin_conf: /etc/kubernetes/admin.conf
+
+# 현재 수동 구축에서 검증한 Calico 설정이다.
+calico_version: v3.32.1
+calico_mtu: 1230
+calico_manifest_directory: /etc/kubernetes/addons/calico

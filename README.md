@@ -5,20 +5,31 @@
 ## 실행 순서
 
 ```bash
-# 1. VM 을 만든다
-terraform -chdir=terraform/aws    apply
-terraform -chdir=terraform/gcp    apply
-terraform -chdir=terraform/onprem apply
+# 1. AWS 네트워크, NAT Gateway, EC2, Database를 순서대로 만든다
+terraform -chdir=terraform/aws/network init -reconfigure
+terraform -chdir=terraform/aws/network apply
 
-# 2. K8s 를 올린다 (인벤토리는 자동으로 채워진다)
-ansible-playbook playbooks/site-control-plane.yaml
-ansible-playbook playbooks/site-workers.yaml
+terraform -chdir=terraform/aws/egress init -reconfigure
+terraform -chdir=terraform/aws/egress apply
 
-# 3. ArgoCD 를 심는다 (이후는 ArgoCD 가 맡는다)
-ansible-playbook playbooks/bootstrap-argocd.yaml
+terraform -chdir=terraform/aws/compute init -reconfigure
+terraform -chdir=terraform/aws/compute apply
+
+terraform -chdir=terraform/aws/database init -reconfigure
+terraform -chdir=terraform/aws/database apply
+
+# 2. 별도 명령으로 K8s 클러스터를 구성한다
+cd ansible
+ansible-playbook playbooks/site-cluster.yaml
 ```
 
-3번 이후로는 클러스터 변경을 여기서 하지 않는다. `k8s-manifests` 로 간다.
+Terraform과 Ansible은 서로를 호출하지 않는다. Ansible은 Tailscale 가입,
+`kubeadm init/join`, Calico 설치와 최종 검증까지 수행한다. 자세한 준비와
+단계별 실행 방법은
+[`ansible/README.md`](ansible/README.md)에 있다.
+
+향후 ArgoCD를 설치한 뒤에는 클러스터 변경을 여기서 하지 않고
+`k8s-manifests`로 넘긴다.
 
 ## 구조
 
@@ -26,9 +37,12 @@ ansible-playbook playbooks/bootstrap-argocd.yaml
 terraform/
   modules/finops-tags/       모든 자원에 붙일 비용 태그
   modules/secops-baseline/   공통 IAM·보안그룹
-  aws/     컨트롤 플레인 + 워커 + LB
-  gcp/     워커
-  onprem/  Proxmox VM
+  aws/network/   VPC, 서브넷, 라우팅, 보안그룹, EICE
+  aws/egress/    독립 생성·삭제하는 NAT Gateway
+  aws/compute/   Control Plane과 Worker EC2
+  aws/database/  애플리케이션용 PostgreSQL RDS
+  gcp/           향후 GCP Worker
+  onprem/        향후 On-Prem Worker
 ansible/
   inventories/   동적 인벤토리 (손으로 IP 를 적지 않는다)
   roles/         OS 설정, K8s 설치, VPN
@@ -44,13 +58,14 @@ ansible/
 
 | 태그 | 값 |
 |---|---|
-| `Area` | `aws` / `gcp` / `onprem` |
-| `Role` | `control-plane` / `worker` |
+| `org` | `cntlp` |
+| `platform` | `aws` / `gcp` / `onp` |
+| `role` | `control-plane` / `worker` |
 
 ## Terraform 상태는 S3 에 둔다
 
-온프렘 서버가 죽었을 때 그 서버를 복구하는 데 필요한 상태가 그 서버 안에 있으면
-곤란하다. 세 스택 모두 같은 S3 버킷을 쓴다.
+AWS의 Network, Egress, Compute, Database 상태는 `cntlp-aws-tfstate` 버킷의 서로 다른
+키에 저장한다. GCP와 On-Prem backend는 현재 구성 범위가 아니다.
 
 ## 클러스터 안쪽 거버넌스는 여기 없다
 

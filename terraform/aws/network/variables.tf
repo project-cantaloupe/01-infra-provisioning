@@ -27,6 +27,19 @@ variable "availability_zone" {
   }
 }
 
+# RDS DB Subnet Group이 최소 두 Availability Zone을 포함하도록
+# Kubernetes 노드용 Subnet과 다른 AZ를 하나 더 사용한다.
+variable "database_availability_zone" {
+  description = "Availability Zone for the additional private subnet used by RDS"
+  type        = string
+  default     = "ap-northeast-2c"
+
+  validation {
+    condition     = can(regex("^${var.aws_region}[a-z]$", var.database_availability_zone))
+    error_message = "database_availability_zone must be a standard Availability Zone in aws_region."
+  }
+}
+
 # 비용 및 자원 관리에 사용하는 필수 태그 값
 variable "owner" {
   description = "Owning team tag in lowercase kebab-case"
@@ -105,6 +118,19 @@ variable "private_subnet_cidrs" {
   }
 }
 
+# RDS는 여러 AZ의 Subnet으로 구성된 DB Subnet Group을 요구한다.
+# 이 Subnet에는 Kubernetes 노드를 배치하지 않고 RDS 배치 후보로만 사용한다.
+variable "database_private_subnet_cidr" {
+  description = "Private subnet CIDR block in a second Availability Zone for RDS"
+  type        = string
+  default     = "10.20.20.0/24"
+
+  validation {
+    condition     = can(cidrnetmask(var.database_private_subnet_cidr))
+    error_message = "database_private_subnet_cidr must be a valid IPv4 CIDR block."
+  }
+}
+
 # VPN이나 사내 관리망처럼 SSH 및 Kubernetes API 접근을 허용할 CIDR 목록
 # 빈 배열이면 외부 관리 접근용 Security Group 규칙을 만들지 않는다.
 variable "management_cidrs" {
@@ -120,17 +146,28 @@ variable "management_cidrs" {
   }
 }
 
-# 라우팅이 연결된 GCP/On-Prem 노드·Pod·VPN CIDR 목록
-# 빈 배열이면 AWS 외부 클러스터 트래픽을 허용하지 않는다.
-variable "remote_cluster_cidrs" {
-  description = "Routed GCP and on-prem node, Pod, or VPN CIDRs allowed to communicate with AWS Kubernetes nodes"
-  type        = list(string)
-  default     = []
+# Tailscale 구성 전 EICE를 통한 Private EC2 SSH 접속 사용 여부.
+variable "enable_eice" {
+  description = "Whether to create an EC2 Instance Connect Endpoint for temporary SSH access"
+  type        = bool
+  default     = false
+}
+
+# EICE를 활성화할 때 temporary lifecycle과 함께 기록할 만료일.
+variable "eice_expires_on" {
+  description = "ISO 8601 expiration date required when EICE is enabled"
+  type        = string
+  default     = null
+  nullable    = true
 
   validation {
-    condition = alltrue([
-      for cidr in var.remote_cluster_cidrs : can(cidrnetmask(cidr))
-    ])
-    error_message = "remote_cluster_cidrs must contain valid IPv4 CIDR blocks."
+    condition = (
+      !var.enable_eice
+      || (
+        var.eice_expires_on != null
+        && can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", var.eice_expires_on))
+      )
+    )
+    error_message = "eice_expires_on must use YYYY-MM-DD when enable_eice is true."
   }
 }

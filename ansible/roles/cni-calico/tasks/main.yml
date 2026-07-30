@@ -1,0 +1,152 @@
+---
+- name: Calico 구성 전제 확인
+  ansible.builtin.assert:
+    that:
+      - kubernetes_admin_conf is defined
+      - kubernetes_pod_cidr is defined
+      - calico_version is defined
+      - calico_mtu | int > 0
+    fail_msg: Kubernetes 또는 Calico 공통 변수를 확인하세요.
+
+- name: Control Plane kubeconfig 확인
+  ansible.builtin.stat:
+    path: "{{ kubernetes_admin_conf }}"
+  register: calico_admin_conf
+
+- name: Control Plane 초기화 완료 확인
+  ansible.builtin.assert:
+    that:
+      - calico_admin_conf.stat.exists
+    fail_msg: Calico보다 먼저 Control Plane을 초기화해야 합니다.
+
+- name: Calico 매니페스트 디렉터리 생성
+  ansible.builtin.file:
+    path: "{{ calico_manifest_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Calico 매니페스트 디렉터리 존재 확인
+  ansible.builtin.stat:
+    path: "{{ calico_manifest_directory }}"
+  register: calico_manifest_directory_state
+
+- name: Calico ProjectCalico CRD 매니페스트 다운로드
+  ansible.builtin.get_url:
+    url: "{{ calico_manifest_base_url }}/v1_crd_projectcalico_org.yaml"
+    dest: "{{ calico_crd_manifest_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not ansible_check_mode
+      or calico_manifest_directory_state.stat.exists
+
+- name: Tigera Operator 매니페스트 다운로드
+  ansible.builtin.get_url:
+    url: "{{ calico_manifest_base_url }}/tigera-operator.yaml"
+    dest: "{{ calico_operator_manifest_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not ansible_check_mode
+      or calico_manifest_directory_state.stat.exists
+
+- name: Cantaloupe Calico 설정 배치
+  ansible.builtin.template:
+    src: custom-resources.yaml.j2
+    dest: "{{ calico_custom_resources_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not ansible_check_mode
+      or calico_manifest_directory_state.stat.exists
+
+# server-side apply는 큰 CRD의 last-applied annotation 크기 제한을 피한다.
+- name: Calico ProjectCalico CRD 적용
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - apply
+      - --server-side
+      - --force-conflicts
+      - --field-manager=ansible-cantaloupe
+      - -f
+      - "{{ calico_crd_manifest_path }}"
+  changed_when: false
+
+- name: Tigera Operator 적용
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - apply
+      - --server-side
+      - --force-conflicts
+      - --field-manager=ansible-cantaloupe
+      - -f
+      - "{{ calico_operator_manifest_path }}"
+  changed_when: false
+
+- name: Tigera Operator 준비 상태 확인
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - -n
+      - tigera-operator
+      - rollout
+      - status
+      - deployment/tigera-operator
+      - --timeout=5m
+  changed_when: false
+  check_mode: false
+
+- name: Calico Installation 및 API Server 적용
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - apply
+      - --server-side
+      - --force-conflicts
+      - --field-manager=ansible-cantaloupe
+      - -f
+      - "{{ calico_custom_resources_path }}"
+  changed_when: false
+
+- name: Calico Installation 준비 상태 확인
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - wait
+      - --for=condition=Ready
+      - installation.operator.tigera.io/default
+      - --timeout=10m
+  changed_when: false
+  check_mode: false
+
+- name: CoreDNS 준비 상태 확인
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - -n
+      - kube-system
+      - rollout
+      - status
+      - deployment/coredns
+      - --timeout=10m
+  changed_when: false
+  check_mode: false

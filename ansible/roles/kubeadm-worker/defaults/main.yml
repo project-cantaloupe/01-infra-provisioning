@@ -1,0 +1,5 @@
+---
+kubeadm_join_config_path: /run/kubeadm-join.yaml
+kubeadm_join_token_ttl: 30m
+kubelet_conf_path: /etc/kubernetes/kubelet.conf
+kubelet_kubeadm_flags_path: /var/lib/kubelet/kubeadm-flags.env

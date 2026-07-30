@@ -16,3 +16,9 @@
 # SSH 및 인증 개인키
 *.pem
 *.key
+
+# Ansible 실행용 로컬 Python 가상환경
+ansible/.venv/
+
+# Ansible Galaxy에서 내려받은 로컬 Collection
+ansible/.collections/

@@ -1,12 +1,13 @@
-# 세 영역의 워커를 이 파일 하나로 처리한다.
-# 구성은 같고 붙는 노드 라벨만 다르다. 영역별로 나누면 세 파일이
-# 시간이 지나면서 서서히 서로 달라진다.
+---
+# 플랫폼별 Worker도 같은 가입 절차를 사용하고 라벨 값만 인벤토리에서 받는다.
 - name: 워커 노드 구성
   hosts: role_worker
   become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/cluster.yml
   roles:
-    - common
-    - security-hardening
-    - vpn-mesh
-    - containerd
+    - role: vpn-mesh
+      vars:
+        tailscale_manage_packages: false
     - kubeadm-worker
