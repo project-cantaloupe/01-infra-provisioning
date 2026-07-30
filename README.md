@@ -31,9 +31,8 @@ Terraform과 Ansible은 서로를 호출하지 않는다. Ansible은 Tailscale �
 향후 ArgoCD를 설치한 뒤에는 클러스터 변경을 여기서 하지 않고
 `k8s-manifests`로 넘긴다.
 
-> **위 순서는 아직 전부 성립하지 않는다.** `site-control-plane.yaml` 과
-> `bootstrap-argocd.yaml` 은 파일이 없다. 지금 있는 것은 `site-workers.yaml`
-> 하나다 (→ `tasks/todo/002_bootstrap-blockers.md` 5번).
+Argo CD 설치와 최초 Root Application 등록은 클러스터 구성 뒤 별도
+부트스트랩 단계에서 수행한다. 이 저장소의 Ansible은 애플리케이션을 배포하지 않는다.
 
 ## 런북
 
@@ -46,7 +45,7 @@ Terraform과 Ansible은 서로를 호출하지 않는다. Ansible은 Tailscale �
 
 ```
 terraform/
-  modules/finops-tags/       모든 자원에 붙일 비용 태그
+  modules/finops-tags/       공통 관리 태그 모듈 자리
   modules/secops-baseline/   공통 IAM·보안그룹
   aws/network/   VPC, 서브넷, 라우팅, 보안그룹, EICE
   aws/egress/    독립 생성·삭제하는 NAT Gateway
@@ -71,12 +70,16 @@ ansible/
 |---|---|
 | `org` | `cntlp` |
 | `platform` | `aws` / `gcp` / `onp` |
-| `role` | `control-plane` / `worker` |
+| `role` | `control-plane` / `service` / `devops` / `monitoring` / `messaging` / `logging` |
+
+AWS·GCP의 공통 관리 태그는 `org`, `owner`, `managed-by`, `lifecycle`,
+`platform`이다. Node에는 `role`, 그 밖의 자원에는 필요할 때 `component`를
+추가한다. 실제 회계 비용센터가 없으므로 `cost-center`는 사용하지 않는다.
 
 ## Terraform 상태는 S3 에 둔다
 
-AWS의 Network, Egress, Compute, Database 상태는 `cntlp-aws-tfstate` 버킷의 서로 다른
-키에 저장한다. GCP와 On-Prem backend는 현재 구성 범위가 아니다.
+AWS의 Network, Egress, Compute, Database와 GCP, On-Prem 상태는 S3 backend의
+서로 다른 키에 저장한다.
 
 ## 클러스터 안쪽 거버넌스는 여기 없다
 

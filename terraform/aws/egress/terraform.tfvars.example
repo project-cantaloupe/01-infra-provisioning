@@ -4,5 +4,4 @@ aws_region     = "ap-northeast-2"
 
 # Network 및 Compute state와 동일한 관리 태그 값을 입력.
 owner       = "REPLACE_WITH_TEAM"
-cost_center = "REPLACE_WITH_COST_CENTER"
 data_class  = "REPLACE_WITH_DATA_CLASS"

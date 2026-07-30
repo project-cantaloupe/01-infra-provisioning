@@ -17,13 +17,12 @@ provider "google" {
 # --- 가이드라인 토큰 표준 라벨 (org: cntlp) ---
 locals {
   common_labels = {
-    org         = "cntlp"
-    owner       = "team-finops"
-    cost-center = "cntlp-finops"
-    managed-by  = "terraform"
-    data-class  = "internal"
-    lifecycle   = "permanent"
-    platform    = "gcp"
+    org        = "cntlp"
+    owner      = "team-platform"
+    managed-by = "terraform"
+    data-class = "internal"
+    lifecycle  = "permanent"
+    platform   = "gcp"
   }
 
   # --- 통합 스타트 스크립트 (K8s v1.36.3 & OS 초기 세팅) ---
@@ -141,11 +140,13 @@ resource "google_compute_firewall" "allow_iap_ssh" {
 
 # --- 영구 디스크 (K8s CSI 연동용 독립 자원) ---
 resource "google_compute_disk" "metrics_disk" {
-  name   = "cntlp-gcp-metrics-disk"
-  type   = "pd-standard"
-  size   = 150
-  zone   = var.zone
-  labels = local.common_labels
+  name = "cntlp-gcp-metrics-disk"
+  type = "pd-standard"
+  size = 150
+  zone = var.zone
+  labels = merge(local.common_labels, {
+    component = "metrics"
+  })
 
   lifecycle {
     prevent_destroy = true
@@ -154,11 +155,13 @@ resource "google_compute_disk" "metrics_disk" {
 
 # --- Compute Engine 인스턴스 (Worker Node 01 - e2-standard-2) ---
 resource "google_compute_instance" "worker_node_01" {
-  name            = "cntlp-gcp-wk-01"
-  machine_type    = "e2-standard-2" # vCPU 2개, 메모리 8GB
-  zone            = var.zone
-  labels          = local.common_labels
-  can_ip_forward  = true
+  name         = "cntlp-gcp-wk-01"
+  machine_type = "e2-standard-2" # vCPU 2개, 메모리 8GB
+  zone         = var.zone
+  labels = merge(local.common_labels, {
+    role = "monitoring"
+  })
+  can_ip_forward = true
 
   boot_disk {
     initialize_params {
@@ -178,11 +181,13 @@ resource "google_compute_instance" "worker_node_01" {
 
 # --- Compute Engine 인스턴스 (Worker Node 02 - e2-standard-4) ---
 resource "google_compute_instance" "worker_node_02" {
-  name            = "cntlp-gcp-wk-02"
-  machine_type    = "e2-standard-4" # vCPU 4개, 메모리 16GB
-  zone            = var.zone
-  labels          = local.common_labels
-  can_ip_forward  = true
+  name         = "cntlp-gcp-wk-02"
+  machine_type = "e2-standard-4" # vCPU 4개, 메모리 16GB
+  zone         = var.zone
+  labels = merge(local.common_labels, {
+    role = "logging"
+  })
+  can_ip_forward = true
 
   boot_disk {
     initialize_params {

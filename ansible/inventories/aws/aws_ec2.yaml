@@ -19,6 +19,6 @@ keyed_groups:
   # platform=aws → platform_aws 그룹
   - key: aws_ec2_tags.platform
     prefix: platform
-  # role=control-plane/worker → role_control_plane/role_worker 그룹
+  # role=control-plane/service → role_control_plane/role_service 그룹
   - key: aws_ec2_tags.role
     prefix: role

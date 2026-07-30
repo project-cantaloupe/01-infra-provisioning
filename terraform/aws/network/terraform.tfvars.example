@@ -6,7 +6,6 @@ database_availability_zone = "ap-northeast-2c"
 
 # 아래 값은 팀에서 확정한 관리 태그 값으로 반드시 교체한다.
 owner       = "REPLACE_WITH_TEAM"
-cost_center = "REPLACE_WITH_COST_CENTER"
 data_class  = "REPLACE_WITH_DATA_CLASS"
 
 # 최초 apply 전에 GCP, On-Prem, Pod, Service, VPN CIDR과
