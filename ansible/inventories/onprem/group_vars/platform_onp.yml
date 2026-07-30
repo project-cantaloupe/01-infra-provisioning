@@ -1,4 +1,4 @@
-# 온프렘 워커 접속 설정.
+# 온프렘 워커 접속 설정 (platform-onp 태그가 만든 platform_onp 그룹).
 #
 # community.general.proxmox 플러그인은 ansible_host 만 compose 로 채울 수 있고
 # 계정·키는 채워주지 않는다. 여기가 없으면 ansible 이 **로컬 사용자 이름**으로

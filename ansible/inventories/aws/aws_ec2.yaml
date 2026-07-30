@@ -4,7 +4,7 @@ regions: [ap-northeast-2]
 filters:
   instance-state-name: running
 keyed_groups:
-  - key: tags.Area
-    prefix: area
+  - key: tags.Platform
+    prefix: platform
   - key: tags.Role
     prefix: role

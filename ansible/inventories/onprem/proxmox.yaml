@@ -30,14 +30,15 @@ compose:
 # Terraform 이 붙인 태그가 그대로 Ansible 그룹이 된다 — aws_ec2.yaml, gcp_compute.yaml 과 같은 규칙.
 #
 # 다만 Proxmox 태그는 key=value 를 못 쓴다. 평평한 문자열 목록이라
-# `area-onprem`, `role-worker` 처럼 붙여 놓고 여기서 접두사를 떼어낸다.
-#   proxmox_tags_parsed = ["area-onprem", "role-worker"]
-#     → area_onprem, role_worker
+# `platform-onp`, `role-devops` 처럼 붙여 놓고 여기서 접두사를 떼어낸다.
+#   proxmox_tags_parsed = ["platform-onp", "role-devops"]
+#     → platform_onp, role_devops
+# 값은 팀 협약을 따른다 — decisions/20260729_k8s-labeling-convention.
 #
-# **이 블록이 없으면 role_worker 그룹이 안 생긴다.** 그러면 site-workers.yaml 이
+# **이 블록이 없으면 platform_onp 그룹이 안 생긴다.** 그러면 site-workers.yaml 이
 # 에러 없이 "0 hosts matched" 로 조용히 끝난다 — 실패로 안 보여서 알아채기 어렵다.
 keyed_groups:
-  - key: proxmox_tags_parsed | select('match', '^area-') | map('replace', 'area-', '') | first | default('none')
-    prefix: area
+  - key: proxmox_tags_parsed | select('match', '^platform-') | map('replace', 'platform-', '') | first | default('none')
+    prefix: platform
   - key: proxmox_tags_parsed | select('match', '^role-') | map('replace', 'role-', '') | first | default('none')
     prefix: role

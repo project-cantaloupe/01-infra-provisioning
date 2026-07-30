@@ -91,9 +91,18 @@ variable "worker_count" {
 }
 
 variable "worker_name_prefix" {
-  description = "VM 이름 접두사. 뒤에 -01, -02 가 붙고 그대로 K8s 노드 이름이 된다."
+  description = <<-EOT
+    VM 이름 접두사. 뒤에 -01, -02 가 붙고 **그대로 K8s 노드 이름이 된다.**
+
+    명명 규칙은 cntlp-<platform>-wk-<nn> 다 (decisions/20260729_resource-naming-convention).
+    org 를 cantaloupe 가 아니라 cntlp 로 줄인 것은 GCP 서비스 계정 30자 제한과
+    S3 버킷 이름 유일성 때문이다.
+
+    조인 후에 바꾸면 노드 이름이 곧 K8s 오브젝트 이름이라 drain·delete·rejoin 이
+    필요하다. 조인 전에 확정한다.
+  EOT
   type        = string
-  default     = "cantaloupe-onprem-worker"
+  default     = "cntlp-onp-wk"
 }
 
 variable "worker_vmid_base" {

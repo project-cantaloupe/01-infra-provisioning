@@ -11,7 +11,7 @@ Proxmox 호스트 위에 **K8s 워커 VM** 을 만든다. 컨트롤플레인은 
 | `proxmox_virtual_environment_file.cloud_config` | VM 별 cloud-init user-data (계정·SSH 키·qemu-guest-agent) |
 | `proxmox_virtual_environment_vm.worker` | 워커 VM. 기본 1대 / 8 vCPU / 16GB / 120GB |
 
-VM 에는 `area-onprem`, `role-worker` 태그가 붙는다.
+VM 에는 `platform-onp`, `role-devops` 태그가 붙는다 (팀 협약 값).
 **이 태그가 곧 ansible 그룹이다.** 손으로 IP 를 적지 않는 이유가 이것이다.
 
 ## 먼저 해둘 것
@@ -145,9 +145,9 @@ VM 이 뜬 뒤 ansible 이 잡는지부터 확인한다. **여기서 자주 끊�
 ansible-inventory -i ../../ansible/inventories/onprem/proxmox.yaml --graph
 ```
 
-`@role_worker` 아래에 방금 만든 VM 이 보여야 한다.
+`@platform_onp` 와 `@role_devops` 아래에 방금 만든 VM 이 보여야 한다.
 안 보이면 `proxmox.yaml` 에 `keyed_groups` 가 없어서다 — `site-workers.yaml` 이
-`hosts: role_worker` 로 잡으므로, 그룹이 안 만들어지면 **에러 없이 조용히 건너뛴다.**
+`hosts: platform_*:!role_control_plane` 으로 잡으므로, 그룹이 안 만들어지면 **에러 없이 조용히 건너뛴다.**
 
 ## 사이징을 왜 1대로 몰았나
 

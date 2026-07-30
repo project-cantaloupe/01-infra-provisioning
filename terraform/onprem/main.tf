@@ -51,13 +51,26 @@ resource "proxmox_virtual_environment_vm" "worker" {
   node_name = var.proxmox_node
   vm_id     = var.worker_vmid_base + count.index
 
-  description = "K8s worker (area=onprem). Terraform 이 관리한다. 손으로 고치지 않는다."
+  description = "K8s worker (platform=onp). Terraform 이 관리한다. 손으로 고치지 않는다."
 
   # Proxmox 태그는 key=value 를 못 쓴다. 하이픈으로 붙이고
   # ansible 이 그대로 그룹 이름으로 읽는다 (- 는 _ 로 변환된다).
-  #   area-onprem  → area_onprem
-  #   role-worker  → role_worker   ← site-workers.yaml 의 hosts 가 이것이다
-  tags = ["area-onprem", "role-worker"]
+  #   platform-onp → platform_onp
+  #   role-devops  → role_devops
+  #
+  # 값은 팀 협약을 그대로 따른다 (decisions/20260729_k8s-labeling-convention).
+  #   platform: aws | gcp | onp
+  #   role:     control-plane | service | devops | messaging | monitoring | logging
+  #
+  # **role 에 worker 는 없다.** 그래서 site-workers.yaml 은 role 그룹이 아니라
+  # platform 그룹으로 잡는다 — `platform_aws:platform_gcp:platform_onp:!role_control_plane`.
+  # role 값이 늘어도 안 깨진다.
+  #
+  # `all:!role_control_plane` 은 쓰지 않는다. community.general.proxmox 가
+  # Proxmox 호스트 자신(`pve`)도 호스트로 노출해서 하이퍼바이저에 swap off·
+  # containerd·kubeadm join 이 돌아간다. 자세한 것은 site-workers.yaml 주석.
+  # 이 태그가 그대로 kubeadm join 의 --node-labels 가 된다.
+  tags = ["platform-onp", "role-devops"]
 
   # destroy 시 정지부터 한다. 안 그러면 락이 걸린 채로 실패한다.
   stop_on_destroy = true
