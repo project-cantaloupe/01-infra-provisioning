@@ -11,12 +11,14 @@
 #   os     common + security-hardening + containerd + kubeadm-common — 외부 의존 없음
 #   mesh   vpn-mesh — 미가입 노드일 때 인증 키 필요
 #
-# **role_secrets 를 뺀다.** Vault 노드(cntlp-aws-vault-01)도 platform=aws 태그를
-# 갖기 때문에 platform_aws 그룹에 들어온다. 빼지 않으면 K8s 노드가 아닌 곳에
-# containerd 와 kubeadm-common 이 깔린다 — 에러 없이 성공해서 알아채기 어렵다.
+# **component_vault 를 뺀다.** Vault 노드(cntlp-aws-vault-01)도 platform=aws
+# 태그를 갖기 때문에 platform_aws 그룹에 들어온다 — 인벤토리가 그 태그로
+# 필터하므로 빼면 노드가 아예 안 보인다. 그래서 여기서 제외한다.
+# 빼지 않으면 K8s 노드가 아닌 곳에 containerd 와 kubeadm-common 이 깔린다 —
+# 에러 없이 성공해서 알아채기 어렵다.
 # Vault 노드는 playbooks/site-vault.yaml 이 담당한다.
 - name: Kubernetes 노드 사전 준비
-  hosts: platform_aws:platform_gcp:platform_onp:!role_secrets
+  hosts: platform_aws:platform_gcp:platform_onp:!component_vault
   become: true
   gather_facts: true
   vars_files:

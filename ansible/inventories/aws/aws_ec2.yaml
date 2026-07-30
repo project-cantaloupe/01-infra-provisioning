@@ -20,5 +20,18 @@ keyed_groups:
   - key: aws_ec2_tags.platform
     prefix: platform
   # role=control-plane/service → role_control_plane/role_service 그룹
+  #
+  # **role 은 Kubernetes 노드 전용이다.** 허용값은 control-plane · service ·
+  # devops · monitoring · messaging · logging 이고, 이 값은 Terraform 태그 →
+  # 이 인벤토리 → kubeadm join → Node 라벨까지 그대로 흘러간다
+  # (playbooks/site-node-labels.yaml 이 종착지에서 검증한다).
+  # → decisions/20260729_k8s-labeling-convention.md
   - key: aws_ec2_tags.role
     prefix: role
+  # component=vault → component_vault 그룹
+  #
+  # 클러스터에 조인하지 않는 노드를 위한 것이다. Vault EC2 가 첫 사례다 —
+  # role 을 붙이면 K8s 노드 전용 값에 K8s 아닌 값이 섞여 그 태그가 두 가지를
+  # 뜻하게 된다. component 는 스택 이름이라 그런 충돌이 없다.
+  - key: aws_ec2_tags.component
+    prefix: component

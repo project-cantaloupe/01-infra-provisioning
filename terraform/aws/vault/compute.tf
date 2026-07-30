@@ -120,16 +120,22 @@ resource "aws_instance" "vault" {
     ignore_changes = [ami]
   }
 
-  # Ansible 동적 inventory가 org·platform 태그로 필터하고 role 태그로 그룹을
-  # 만든다 (inventories/aws/aws_ec2.yaml). role=secrets → role_secrets 그룹.
+  # ── role 태그를 붙이지 않는다 ─────────────────────────────────
   #
-  # **role=secrets 만으로는 K8s 플레이북에서 빠지지 않는다.**
-  # 동적 inventory가 tag:platform=aws 로 필터하므로 이 노드도 platform_aws
-  # 그룹에 들어가고, site-prerequisites.yaml 은 그 그룹 전체를 잡아
-  # containerd 와 kubeadm-common 까지 깔아버린다. Vault 노드는 K8s 노드가
-  # 아니다. 그래서 그 플레이북의 hosts 패턴에 !role_secrets 를 넣었다.
+  # **role 은 Kubernetes 노드 전용 라벨이다.** 허용값은 control-plane · service ·
+  # devops · monitoring · messaging · logging 이고, Terraform 태그 → 동적
+  # inventory → kubeadm join → Node 라벨까지 그대로 흘러간다.
+  # Vault 는 클러스터에 조인하지 않으므로 그 파이프라인에 넣지 않는다.
+  # → decisions/20260729_k8s-labeling-convention.md
+  #
+  # 대신 default_tags 의 component = "vault" 로 그룹이 만들어진다
+  # (inventories/aws/aws_ec2.yaml 의 component keyed_group → component_vault).
+  #
+  # 그래도 platform=aws 는 붙는다 — 인벤토리가 그 태그로 필터하기 때문에
+  # 빼면 이 노드가 인벤토리에 아예 안 나타난다. 그래서 platform_aws 그룹에는
+  # 들어가고, site-prerequisites.yaml 이 !component_vault 로 빼낸다.
+  # 안 빼면 K8s 노드가 아닌 곳에 containerd 와 kubeadm-common 이 깔린다.
   tags = {
     Name = local.vault_name
-    role = "secrets"
   }
 }

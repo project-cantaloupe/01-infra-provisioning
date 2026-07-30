@@ -3,11 +3,14 @@
 #
 # site-prerequisites.yaml 과 분리한 이유는 롤 구성이 다르기 때문이다.
 # Vault 노드는 K8s 노드가 아니라 containerd·kubeadm-common 이 필요 없다.
-# 그쪽 플레이북의 hosts 패턴에서 !role_secrets 로 빼두었다.
+# 그쪽 플레이북의 hosts 패턴에서 !component_vault 로 빼두었다.
 #
-# **hosts 를 role_secrets 로 잡는다.** platform_aws 로 잡으면 나중에 이 그룹에
-# 들어올 컨트롤플레인·워커에도 Vault 가 깔린다.
-# 태그는 terraform/aws/vault/compute.tf 가 role = "secrets" 로 붙인다.
+# **hosts 를 component_vault 로 잡는다.** platform_aws 로 잡으면 나중에 이
+# 그룹에 들어올 컨트롤플레인·워커에도 Vault 가 깔린다.
+#
+# role 태그를 쓰지 않는 이유는 그것이 Kubernetes 노드 전용 라벨이기 때문이다
+# (허용값 control-plane · service · devops · monitoring · messaging · logging).
+# component 태그는 terraform/aws/vault 의 default_tags 가 "vault" 로 붙인다.
 #
 # ── 순서 ────────────────────────────────────────────────────────
 #
@@ -29,7 +32,7 @@
 # 이 플레이북은 Vault 를 **초기화하지 않는다.** `vault operator init` 은 사람이
 # 한다 — docs/runbook-vault.md
 - name: Vault 서버 구성
-  hosts: role_secrets
+  hosts: component_vault
   become: true
   gather_facts: true
   roles:
