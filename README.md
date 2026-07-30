@@ -39,6 +39,7 @@ Argo CD 설치와 최초 Root Application 등록은 클러스터 구성 뒤 별�
 | 문서 | 언제 |
 |---|---|
 | [docs/runbook-onp-vm-recreate.md](docs/runbook-onp-vm-recreate.md) | 온프렘 워커 VM을 지우고 다시 만들어 재조인할 때. 무엇이 멱등이고 무엇이 사람 손을 요구하는지 |
+| [docs/vault-architecture.md](docs/vault-architecture.md) | Vault 가 왜 이렇게 생겼는지. 8200 을 안 여는 이유, KMS seal, 주체 분리, 아직 안 끝난 tfstate 문제 |
 | [docs/runbook-vault.md](docs/runbook-vault.md) | Vault 를 세우고 백업·복구할 때. `vault operator init` 출력은 화면에 한 번만 나온다 |
 | [terraform/onp/README.md](terraform/onp/README.md) | Proxmox 사전 설정(API 토큰, snippets 콘텐츠 타입) |
 | [terraform/vault/README.md](terraform/vault/README.md) | Vault 내부 정책·AppRole 을 고칠 때 |
