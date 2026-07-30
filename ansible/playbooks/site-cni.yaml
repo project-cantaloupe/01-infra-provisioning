@@ -1,0 +1,10 @@
+---
+# Control Plane 초기화 후 Calico 네트워크를 설치한다.
+- name: Calico CNI 구성
+  hosts: role_control_plane
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/cluster.yml
+  roles:
+    - cni-calico

@@ -1,0 +1,10 @@
+---
+# 저장소 경로가 minor 버전 단위이므로 클러스터 업그레이드 때 명시적으로 바꾼다.
+kubernetes_minor_version: v1.36
+kubernetes_version: v1.36.3
+kubernetes_package_version: 1.36.3-1.1
+
+kubernetes_packages:
+  - kubelet
+  - kubeadm
+  - kubectl

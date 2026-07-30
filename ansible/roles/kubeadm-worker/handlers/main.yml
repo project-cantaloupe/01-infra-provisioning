@@ -1,0 +1,5 @@
+---
+- name: kubelet 재시작
+  ansible.builtin.service:
+    name: kubelet
+    state: restarted

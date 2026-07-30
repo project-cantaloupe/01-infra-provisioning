@@ -1,0 +1,21 @@
+---
+# AWS의 Ubuntu AMI 기본 계정으로 접속한다.
+ansible_user: ubuntu
+ansible_python_interpreter: /usr/bin/python3
+
+# 환경변수를 지정하지 않으면 로컬의 기본 Ed25519 개인키를 사용한다.
+# 개인키와 인증 정보는 저장소에 넣지 않는다.
+ansible_ssh_private_key_file: >-
+  {{
+    lookup('env', 'CNTLP_SSH_PRIVATE_KEY')
+    | default(lookup('env', 'HOME') + '/.ssh/id_ed25519', true)
+  }}
+
+# 대상 호스트명은 인스턴스 ID이며 AWS CLI가 EICE 터널을 연다.
+# AWS_PROFILE은 Ansible 실행 셸에 export한 값을 그대로 사용한다.
+ansible_ssh_common_args: >-
+  -o StrictHostKeyChecking=accept-new
+  -o ProxyCommand="aws ec2-instance-connect open-tunnel
+  --instance-id %h
+  --remote-port 22
+  --region ap-northeast-2"

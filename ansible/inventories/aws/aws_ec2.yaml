@@ -8,10 +8,17 @@ filters:
   # 다른 프로젝트나 플랫폼의 EC2가 섞이지 않도록 필수 태그로 제한한다.
   "tag:org": cntlp
   "tag:platform": aws
+# EICE 터널은 사설 IP 대신 EC2 인스턴스 ID를 대상으로 연다.
+hostnames:
+  - instance-id
+# AWS가 제공한 host variable이 Ansible 예약어와 충돌하지 않도록 구분한다.
+hostvars_prefix: aws_
+compose:
+  ansible_host: aws_instance_id
 keyed_groups:
   # platform=aws → platform_aws 그룹
-  - key: ec2_tags.platform
+  - key: aws_ec2_tags.platform
     prefix: platform
   # role=control-plane/worker → role_control_plane/role_worker 그룹
-  - key: ec2_tags.role
+  - key: aws_ec2_tags.role
     prefix: role

@@ -1,0 +1,72 @@
+---
+- name: Kubernetes 저장소에 필요한 패키지 설치
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: APT keyring 디렉터리 생성
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Kubernetes 패키지 서명 키 설치
+  ansible.builtin.get_url:
+    url: >-
+      https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version
+      }}/deb/Release.key
+    dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Kubernetes APT 저장소 추가
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc]
+      https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/ /
+    filename: kubernetes
+    state: present
+    update_cache: true
+
+- name: kubelet kubeadm kubectl 설치
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ kubernetes_package_version }}"
+      - "kubeadm={{ kubernetes_package_version }}"
+      - "kubectl={{ kubernetes_package_version }}"
+    state: present
+    allow_change_held_packages: true
+
+- name: Kubernetes 패키지 자동 업그레이드 방지
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: "{{ kubernetes_packages }}"
+
+# kubeadm 실행 전 kubelet 재시작은 정상이며, 부트스트랩 후 정상 상태가 된다.
+- name: kubelet 부팅 시 자동 시작 설정
+  ansible.builtin.service:
+    name: kubelet
+    enabled: true
+
+- name: 설치된 kubeadm 버전 확인
+  ansible.builtin.command: kubeadm version -o short
+  register: kubeadm_installed_version
+  changed_when: false
+  check_mode: false
+
+- name: kubeadm 버전 일치 확인
+  ansible.builtin.assert:
+    that:
+      - kubeadm_installed_version.stdout | trim == kubernetes_version
+    fail_msg: >-
+      설치된 kubeadm 버전이 클러스터 설정과 다릅니다.
+      cluster.yml의 Kubernetes 버전을 함께 갱신하세요.

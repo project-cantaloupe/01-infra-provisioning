@@ -49,6 +49,29 @@ resource "aws_subnet" "private" {
   }
 }
 
+# RDS DB Subnet Group이 두 AZ를 사용하도록 추가하는 Database 전용 Private Subnet이다.
+# 기존 Kubernetes 노드용 Subnet과 Terraform 주소를 변경하지 않아 현재 노드에 영향이 없다.
+resource "aws_subnet" "database" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.database_private_subnet_cidr
+  availability_zone       = var.database_availability_zone
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name    = "${local.name_prefix}-api-db-subnet"
+    tier    = "private"
+    purpose = "database"
+  }
+}
+
+# RDS용 추가 Subnet은 Kubernetes 노드용 AZ와 달라야 한다.
+check "database_subnet_uses_distinct_az" {
+  assert {
+    condition     = var.database_availability_zone != var.availability_zone
+    error_message = "database_availability_zone must differ from availability_zone."
+  }
+}
+
 # Public Subnet의 VPC 외부 트래픽을 Internet Gateway로 보낸다.
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
@@ -88,5 +111,12 @@ resource "aws_route_table_association" "private" {
   for_each = aws_subnet.private
 
   subnet_id      = each.value.id
+  route_table_id = aws_route_table.private.id
+}
+
+# RDS용 Private Subnet에도 같은 Private Route Table을 연결한다.
+# RDS는 인터넷 공개 없이 VPC 내부에서만 접근한다.
+resource "aws_route_table_association" "database" {
+  subnet_id      = aws_subnet.database.id
   route_table_id = aws_route_table.private.id
 }

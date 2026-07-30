@@ -1,0 +1,43 @@
+---
+- name: containerd 설치
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: containerd 기본 설정 생성
+  ansible.builtin.command: containerd config default
+  register: containerd_default_config
+  changed_when: false
+  check_mode: false
+
+- name: kubelet과 같은 systemd cgroup 드라이버를 사용하도록 설정
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: "0644"
+    content: >-
+      {{
+        containerd_default_config.stdout
+        | regex_replace(
+            'SystemdCgroup = false',
+            'SystemdCgroup = true'
+          )
+      }}
+  notify: containerd 재시작
+
+- name: 변경된 containerd 설정 즉시 반영
+  ansible.builtin.meta: flush_handlers
+
+- name: containerd 서비스 활성화
+  ansible.builtin.service:
+    name: containerd
+    enabled: true
+    state: started
+
+- name: SystemdCgroup 설정 확인
+  ansible.builtin.command: grep -F "SystemdCgroup = true" /etc/containerd/config.toml
+  changed_when: false
+  check_mode: false

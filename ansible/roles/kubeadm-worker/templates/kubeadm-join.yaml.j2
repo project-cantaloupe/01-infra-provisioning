@@ -1,0 +1,15 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: JoinConfiguration
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: "{{ kubeadm_join_endpoint }}"
+    token: "{{ kubeadm_join_token }}"
+    caCertHashes:
+      - "{{ kubeadm_join_ca_hash }}"
+nodeRegistration:
+  name: "{{ ansible_facts.hostname }}"
+  criSocket: "{{ kubernetes_cri_socket }}"
+  imagePullPolicy: IfNotPresent
+  kubeletExtraArgs:
+    - name: node-ip
+      value: "{{ tailscale_ipv4 }}"

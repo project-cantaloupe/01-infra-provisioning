@@ -13,7 +13,7 @@ output "availability_zone" {
 
 # 향후 Public Load Balancer나 Gateway가 사용할 Subnet 목록
 output "public_subnet_ids" {
-  description = "Public subnet IDs consumed by the Compute state"
+  description = "Public subnet IDs consumed by the Egress state"
   value       = values(aws_subnet.public)[*].id
 }
 
@@ -21,6 +21,12 @@ output "public_subnet_ids" {
 output "private_subnet_ids" {
   description = "Private subnet IDs consumed by the Compute state"
   value       = values(aws_subnet.private)[*].id
+}
+
+# RDS DB Subnet Group이 사용할 서로 다른 AZ의 Private Subnet 목록
+output "database_subnet_ids" {
+  description = "Private subnet IDs in two Availability Zones consumed by the Database state"
+  value       = concat(values(aws_subnet.private)[*].id, [aws_subnet.database.id])
 }
 
 # 추후 NAT/Firewall egress 경로를 추가할 때 사용할 Route Table ID
@@ -45,4 +51,10 @@ output "control_plane_security_group_id" {
 output "worker_security_group_id" {
   description = "Worker security group ID"
   value       = aws_security_group.worker.id
+}
+
+# EICE 비활성화 시 null을 반환.
+output "eice_id" {
+  description = "EC2 Instance Connect Endpoint ID when EICE is enabled"
+  value       = var.enable_eice ? aws_ec2_instance_connect_endpoint.main[0].id : null
 }

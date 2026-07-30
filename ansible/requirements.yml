@@ -1,0 +1,5 @@
+---
+collections:
+  # EC2 태그를 읽어 동적으로 control-plane/worker 그룹을 만든다.
+  - name: amazon.aws
+    version: "11.4.0"

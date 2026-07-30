@@ -1,0 +1,24 @@
+# 실제 AWS 계정 ID와 리전으로 교체한다.
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+
+# 아래 값은 팀에서 확정한 관리 태그 값으로 반드시 교체한다.
+owner       = "REPLACE_WITH_TEAM"
+cost_center = "REPLACE_WITH_COST_CENTER"
+data_class  = "REPLACE_WITH_DATA_CLASS"
+
+# 서울 리전에서 제공되는 PostgreSQL과 Graviton 소형 인스턴스를 사용한다.
+postgres_engine_version = "18.3"
+db_instance_class       = "db.t4g.micro"
+allocated_storage       = 20
+
+database_name  = "audio"
+master_username = "cntlpadmin"
+
+# 자동 백업을 7일 보관한다.
+backup_retention_period = 7
+
+# 기본값은 실수로 DB가 삭제되지 않도록 보호하고, 의도적 삭제 시 최종 Snapshot을 남긴다.
+deletion_protection     = true
+skip_final_snapshot     = false
+final_snapshot_identifier = "cntlp-aws-api-db-final"

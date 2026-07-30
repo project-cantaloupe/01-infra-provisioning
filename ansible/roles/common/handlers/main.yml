@@ -1,0 +1,4 @@
+---
+- name: Kubernetes sysctl 적용
+  ansible.builtin.command: sysctl --system
+  changed_when: true

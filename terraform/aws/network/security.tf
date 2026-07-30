@@ -13,18 +13,10 @@ resource "aws_security_group" "cluster" {
     self = true
   }
 
-  # GCP/On-Prem 네트워크가 실제로 라우팅된 뒤 CIDR이 입력된 경우에만 생성한다.
-  dynamic "ingress" {
-    for_each = length(var.remote_cluster_cidrs) == 0 ? [] : [var.remote_cluster_cidrs]
-
-    content {
-      description = "Cluster traffic from routed GCP and on-prem networks"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ingress.value
-    }
-  }
+  # GCP/On-Prem 노드의 Kubernetes 트래픽은 각 노드의 Tailscale 인터페이스로
+  # 암호화되어 전달된다. 물리 네트워크 CIDR 전체를 여기서 허용하지 않고,
+  # Tailnet 내부 접근은 Tailscale Grant/ACL에서 사용자·태그·포트로 통제한다.
+  # 추후 실제 Site-to-Site 라우팅을 도입할 때는 필요한 포트만 별도 SG에 추가한다.
 
   # VPN 또는 관리망 CIDR이 입력된 경우에만 SSH 규칙을 생성한다.
   dynamic "ingress" {
@@ -36,6 +28,19 @@ resource "aws_security_group" "cluster" {
       to_port     = 22
       protocol    = "tcp"
       cidr_blocks = ingress.value
+    }
+  }
+
+  # EICE 활성화 시 Endpoint Security Group에서 시작한 SSH만 허용.
+  dynamic "ingress" {
+    for_each = var.enable_eice ? [aws_security_group.eice[0].id] : []
+
+    content {
+      description     = "SSH from EC2 Instance Connect Endpoint"
+      from_port       = 22
+      to_port         = 22
+      protocol        = "tcp"
+      security_groups = [ingress.value]
     }
   }
 

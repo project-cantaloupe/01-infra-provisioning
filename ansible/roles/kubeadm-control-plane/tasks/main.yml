@@ -1,0 +1,145 @@
+---
+- name: Control Plane 구성 전제 확인
+  ansible.builtin.assert:
+    that:
+      - groups['role_control_plane'] | default([]) | length == 1
+      - tailscale_ipv4 is defined
+      - kubernetes_node_platform is defined
+      - kubernetes_node_role == "control-plane"
+      - ansible_facts.hostname
+        is match('^cntlp-(aws|gcp|onp)-cp-[0-9]{2}$')
+    fail_msg: Control Plane 그룹, Tailscale IP 또는 노드 명명 규칙을 확인하세요.
+
+- name: Kubernetes 설정 디렉터리 생성
+  ansible.builtin.file:
+    path: /etc/kubernetes
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: 기존 Control Plane 초기화 상태 확인
+  ansible.builtin.stat:
+    path: "{{ kubernetes_admin_conf }}"
+  register: kubeadm_admin_conf_before
+
+- name: kubeadm init 설정 배치
+  ansible.builtin.template:
+    src: kubeadm-init.yaml.j2
+    dest: "{{ kubeadm_init_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: 검증할 kubeadm init 설정 존재 확인
+  ansible.builtin.stat:
+    path: "{{ kubeadm_init_config_path }}"
+  register: kubeadm_init_config
+
+- name: kubeadm init 설정 검증
+  ansible.builtin.command:
+    argv:
+      - kubeadm
+      - config
+      - validate
+      - --config
+      - "{{ kubeadm_init_config_path }}"
+  when: kubeadm_init_config.stat.exists
+  changed_when: false
+  check_mode: false
+
+- name: Control Plane 이미지 미리 받기
+  ansible.builtin.command:
+    argv:
+      - kubeadm
+      - config
+      - images
+      - pull
+      - --config
+      - "{{ kubeadm_init_config_path }}"
+  when: not kubeadm_admin_conf_before.stat.exists
+  changed_when: true
+
+- name: Control Plane 최초 초기화
+  ansible.builtin.command:
+    argv:
+      - kubeadm
+      - init
+      - --config
+      - "{{ kubeadm_init_config_path }}"
+    creates: "{{ kubernetes_admin_conf }}"
+  when: not kubeadm_admin_conf_before.stat.exists
+
+- name: Control Plane 초기화 완료 확인
+  ansible.builtin.stat:
+    path: "{{ kubernetes_admin_conf }}"
+  register: kubeadm_admin_conf_after
+
+- name: 관리자 kubeconfig 존재 확인
+  ansible.builtin.assert:
+    that:
+      - kubeadm_admin_conf_after.stat.exists
+    fail_msg: kubeadm init이 완료되지 않았습니다.
+
+- name: 관리자 사용자 kubeconfig 디렉터리 생성
+  ansible.builtin.file:
+    path: "{{ kubernetes_admin_home }}/.kube"
+    state: directory
+    owner: "{{ kubernetes_admin_user }}"
+    group: "{{ kubernetes_admin_user }}"
+    mode: "0700"
+
+- name: 관리자 사용자 kubeconfig 배치
+  ansible.builtin.copy:
+    src: "{{ kubernetes_admin_conf }}"
+    dest: "{{ kubernetes_admin_home }}/.kube/config"
+    remote_src: true
+    owner: "{{ kubernetes_admin_user }}"
+    group: "{{ kubernetes_admin_user }}"
+    mode: "0600"
+
+- name: API Server 준비 상태 확인
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - get
+      - --raw=/readyz
+  register: kube_apiserver_ready
+  until: kube_apiserver_ready.rc == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+  check_mode: false
+
+- name: 현재 Control Plane 사용자 라벨 조회
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - get
+      - node
+      - "{{ ansible_facts.hostname }}"
+      - "-o=jsonpath={.metadata.labels.platform}:{.metadata.labels.role}"
+  register: control_plane_labels
+  changed_when: false
+  check_mode: false
+
+- name: Control Plane 필수 라벨 적용
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - label
+      - node
+      - "{{ ansible_facts.hostname }}"
+      - "platform={{ kubernetes_node_platform }}"
+      - "role={{ kubernetes_node_role }}"
+      - --overwrite
+  when: >-
+    control_plane_labels.stdout | trim
+    != kubernetes_node_platform ~ ':' ~ kubernetes_node_role
+  changed_when: true

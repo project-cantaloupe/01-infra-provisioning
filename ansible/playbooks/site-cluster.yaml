@@ -1,0 +1,19 @@
+---
+# Terraform과 독립적으로 실행하는 전체 Kubernetes 구성 진입점이다.
+- name: 노드 사전 준비
+  ansible.builtin.import_playbook: site-prerequisites.yaml
+
+- name: Control Plane 구성
+  ansible.builtin.import_playbook: site-control-plane.yaml
+
+- name: Calico CNI 구성
+  ansible.builtin.import_playbook: site-cni.yaml
+
+- name: Worker 가입
+  ansible.builtin.import_playbook: site-workers.yaml
+
+- name: 전체 노드 필수 라벨 구성
+  ansible.builtin.import_playbook: site-node-labels.yaml
+
+- name: 클러스터 상태 검증
+  ansible.builtin.import_playbook: site-verify.yaml
