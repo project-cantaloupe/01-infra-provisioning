@@ -9,9 +9,29 @@
 # terraform.tfvars.example 같은 예시 파일은 이 패턴에 포함되지 않는다.
 *.tfvars
 *.tfvars.json
+!*.tfvars.example
 
-# 저장된 실행 계획
+# .terraform.lock.hcl 은 커밋한다. 제외하면 provider 버전이 실행자마다 달라져
+# "내 노트북에서는 되는데" 가 재현된다. 잠금 파일은 상태가 아니라 코드다.
+
+# 로컬에서만 백엔드·변수를 갈아끼우는 용도. 공유하면 남의 상태를 덮어쓴다.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# plan 파일은 암호화되지 않는다. sensitive = true 로 가린 값도 평문으로 들어간다 —
+# 실제로 이 리포의 tfplan 에서 proxmox_api_token 이 평문으로 나왔다.
+# CI 에서 plan 잡 → apply 잡으로 넘기는 빌드 아티팩트이지 소스가 아니다.
+tfplan
 *.tfplan
+plan.out
+
+# 로컬에서 돌린 plan/apply 출력. 다시 돌리면 나오는 것은 저장하지 않는다.
+# 남길 기록은 CI 잡 로그와 백엔드의 state 버전 이력이 갖는다.
+*.log
+crash.log
+crash.*.log
 
 # SSH 및 인증 개인키
 *.pem

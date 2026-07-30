@@ -1,13 +1,38 @@
+# 세 영역의 워커를 이 파일 하나로 처리한다.
+# 구성은 같고 붙는 노드 라벨만 다르다. 영역별로 나누면 세 파일이
+# 시간이 지나면서 서서히 서로 달라진다.
+#
+# OS·런타임 준비(common, security-hardening, containerd, kubeadm-common)는
+# site-prerequisites.yaml 이 컨트롤플레인과 함께 처리한다. 여기서는 조인만 한다.
+# **다만 `--tags join` 으로 이 파일만 단독 실행할 수 있다.** 그 경로로 들어오면
+# 사전 준비가 건너뛰어지므로 kubeadm-worker 롤이 사전요건을 직접 검사한다.
+#
+# hosts 를 role 그룹으로 잡지 않는다. 팀 협약의 role 값에는 worker 가 없고
+# (control-plane | service | devops | messaging | monitoring | logging)
+# 영역마다 다르기 때문이다 — decisions/20260729_k8s-labeling-convention.
+#
+# **`all:!role_control_plane` 은 쓰면 안 된다.** community.general.proxmox 는
+# Proxmox 호스트 자신(`pve`)도 호스트로 노출한다. all 로 잡으면 하이퍼바이저에
+# swap off·containerd·kubeadm join 이 돌아간다.
+#
+# platform 그룹으로 잡는다. 팀 협약상 관리 대상 노드는 전부 platform 라벨을
+# 갖고, Proxmox 호스트는 갖지 않으므로 자연히 빠진다.
+#
+# ── 태그 ────────────────────────────────────────────────────────
+#   mesh      vpn-mesh        — 인증 키 필요 (미가입 노드일 때만)
+#   join      kubeadm-worker  — 컨트롤플레인의 join 토큰 필요
 ---
-# 플랫폼별 Worker도 같은 가입 절차를 사용하고 라벨 값만 인벤토리에서 받는다.
 - name: 워커 노드 구성
-  hosts: role_worker
+  hosts: platform_aws:platform_gcp:platform_onp:!role_control_plane
   become: true
   gather_facts: true
   vars_files:
     - ../vars/cluster.yml
   roles:
+    # 사전 준비 플레이에서 이미 설치했다. 여기서는 가입 상태만 재확인한다.
     - role: vpn-mesh
+      tags: [mesh]
       vars:
         tailscale_manage_packages: false
-    - kubeadm-worker
+    - role: kubeadm-worker
+      tags: [join, kubeadm]

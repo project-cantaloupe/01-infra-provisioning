@@ -1,0 +1,112 @@
+---
+# SSH 와 방화벽.
+#
+# **이 롤은 자기 발을 쏠 수 있다.** 두 가지가 특히 그렇다.
+#
+# 1. ufw enable 전에 SSH 를 열지 않으면 그 순간 접속이 끊기고
+#    ansible 이 UNREACHABLE 로 죽는다. 콘솔로 들어가야 복구된다.
+#    → 규칙을 전부 넣은 다음에야 enable 한다.
+#
+# 2. **ufw 의 DEFAULT_FORWARD_POLICY 기본값은 DROP 이다.**
+#    파드 간 트래픽은 노드를 FORWARD 로 지나가므로 이걸 그대로 두면
+#    CNI 를 깔아도 파드끼리 안 통한다. 노드는 Ready 인데 통신만 안 되는,
+#    가장 찾기 어려운 형태로 나타난다. → ACCEPT 로 바꾼다.
+#
+# site-workers.yaml 의 롤 순서상 이 롤은 vpn-mesh **앞**이다.
+# 따라서 실행 시점에 tailscale0 인터페이스가 아직 없다.
+# ufw 는 없는 인터페이스에도 규칙을 걸 수 있으므로 미리 넣어둔다.
+
+- name: SSH 를 잠근다
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    mode: "0644"
+    content: |
+      # cloud-init 이 키를 넣었다. 비밀번호 로그인은 필요 없다.
+      PasswordAuthentication no
+      PermitRootLogin no
+      PubkeyAuthentication yes
+      # 끊긴 세션이 오래 남지 않게 한다.
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+  notify: restart sshd
+
+# 설정이 문법적으로 맞는지 먼저 본다. 틀린 채로 재시작하면 sshd 가 안 뜬다.
+- name: sshd 설정 문법을 검사한다
+  ansible.builtin.command: sshd -t
+  changed_when: false
+
+- name: 핸들러를 지금 돌린다
+  ansible.builtin.meta: flush_handlers
+
+# 아래 태스크는 전부 방화벽을 켤 때만 의미가 있다. 하나씩 when 을 붙이면
+# 열 곳이 되고, 한 곳을 빼먹으면 방화벽을 끈 상태에서도 ufw 가 실행된다.
+- name: 방화벽을 구성한다
+  when: security_enable_firewall | bool
+  block:
+    - name: ufw 를 깐다
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # 파드 트래픽이 FORWARD 를 지난다. 이걸 놓치면 CNI 를 깔아도 파드가 서로 못 본다.
+    - name: FORWARD 기본 정책을 ACCEPT 로 바꾼다
+      ansible.builtin.lineinfile:
+        path: /etc/default/ufw
+        regexp: '^DEFAULT_FORWARD_POLICY='
+        line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+      notify: reload ufw
+
+    # ── 여기부터 규칙. enable 은 맨 마지막이다 ──────────────────
+
+    - name: SSH 를 먼저 연다
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+        src: "{{ item }}"
+      loop: "{{ security_ssh_allow_from }}"
+
+    # Tailscale 이 직접 연결(P2P)을 맺을 때 쓰는 포트.
+    # 막히면 조용히 DERP 릴레이로 폴백해서 "되긴 되는데 느린" 상태가 된다.
+    - name: Tailscale 직접 연결 포트를 연다
+      community.general.ufw:
+        rule: allow
+        port: "41641"
+        proto: udp
+
+    # 클러스터 내부 통신(kubelet 10250, NodePort, CNI 오버레이)은 전부 메시를 탄다.
+    # 포트를 하나씩 여는 대신 인터페이스를 통째로 신뢰한다.
+    - name: 메시 인터페이스를 신뢰한다
+      community.general.ufw:
+        rule: allow
+        interface: "{{ security_mesh_interface }}"
+        direction: in
+
+    - name: 나가는 것은 허용한다
+      community.general.ufw:
+        default: allow
+        direction: outgoing
+
+    - name: 들어오는 것은 기본 차단한다
+      community.general.ufw:
+        default: deny
+        direction: incoming
+
+    # 규칙이 전부 들어간 뒤에야 켠다.
+    - name: ufw 를 켠다
+      community.general.ufw:
+        state: enabled
+
+    # 켠 다음 SSH 가 살아 있는지 실제로 확인한다.
+    # 이 태스크가 도는 것 자체가 SSH 가 살아 있다는 증거지만,
+    # 규칙 목록을 남겨 두면 나중에 사람이 볼 수 있다.
+    - name: 방화벽 상태를 기록한다
+      ansible.builtin.command: ufw status verbose
+      register: _ufw
+      changed_when: false
+
+    - name: 방화벽 규칙을 보여준다
+      ansible.builtin.debug:
+        var: _ufw.stdout_lines

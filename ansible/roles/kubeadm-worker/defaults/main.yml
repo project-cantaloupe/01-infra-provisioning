@@ -3,3 +3,38 @@ kubeadm_join_config_path: /run/kubeadm-join.yaml
 kubeadm_join_token_ttl: 30m
 kubelet_conf_path: /etc/kubernetes/kubelet.conf
 kubelet_kubeadm_flags_path: /var/lib/kubelet/kubeadm-flags.env
+
+# 조인 흔적으로 볼 파일들. kubelet.conf 가 없어도 이것들이 남아 있으면
+# 이전 조인이 중간에 실패한 상태다 (preflight FileAvailable 오류로 이어진다).
+kubeadm_trace_paths:
+  - /etc/kubernetes/kubelet.conf
+  - /etc/kubernetes/pki/ca.crt
+  - /var/lib/kubelet/config.yaml
+
+# 이미 조인된(또는 조인이 중간에 깨진) 노드를 강제로 재조인할지.
+#
+# **기본값은 false 이고, false 인 동안 이 롤은 아무것도 지우지 않는다.**
+# true 로 주면 `kubeadm reset -f` 와 /etc/cni/net.d 삭제가 돈다.
+#
+# 쓰는 경우는 두 가지다.
+#   1. 클러스터를 다시 세워서 노드가 낡은 엔드포인트를 보고 있다
+#   2. 이전 조인이 중간에 실패해 흔적만 남았다 (preflight FileAvailable 오류)
+#
+# **먼저 클러스터에서 Node 오브젝트를 지운다.** 이 롤은 그것을 못 한다 —
+# 워커에는 admin kubeconfig 가 없다.
+#   kubectl drain <노드> --ignore-daemonsets --delete-emptydir-data
+#   kubectl delete node <노드>
+#
+# VM 을 다시 만드는 경로에서는 이 플래그가 필요 없다. 흔적이 애초에 없다.
+#   ansible-playbook playbooks/site-workers.yaml --tags join -e kubeadm_force_rejoin=true
+kubeadm_force_rejoin: false
+
+# 노드 라벨은 팀 협약을 따른다 — decisions/20260729_k8s-labeling-convention.
+# 인벤토리 group_vars 가 명시하면 그쪽이 이긴다 (group_vars > role defaults).
+# AWS 는 inventories/aws/group_vars 가 명시하고, 온프렘은 아래 파생을 쓴다.
+kubernetes_node_platform: >-
+  {{ (group_names | select('match', '^platform_') | first | default(''))
+     | replace('platform_', '') }}
+kubernetes_node_role: >-
+  {{ (group_names | select('match', '^role_') | first | default(''))
+     | replace('role_', '') }}

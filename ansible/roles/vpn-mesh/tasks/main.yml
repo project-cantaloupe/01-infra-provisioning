@@ -1,4 +1,9 @@
 ---
+# Tailscale 에이전트 설치 + tailnet 조인.
+#
+# auth key 는 절대 코드나 로그에 남기지 않는다. no_log 를 건 이유가 그것이다.
+# 키가 유출되면 남이 우리 tailnet 에 노드를 붙일 수 있다.
+
 - name: Ubuntu 노드인지 확인
   ansible.builtin.assert:
     that:
@@ -38,41 +43,53 @@
     update_cache: true
   when: tailscale_manage_packages | bool
 
+# cache_valid_time 이 있어야 바로 위 apt_repository 가 이미 돌린 apt-get update 를
+# 한 번 더 돌리지 않는다 (apt_repository 의 update_cache 기본값이 yes 다).
 - name: Tailscale 설치
   ansible.builtin.apt:
     name: tailscale
     state: present
+    update_cache: true
+    cache_valid_time: 3600
   when: tailscale_manage_packages | bool
 
 - name: tailscaled 서비스 활성화
-  ansible.builtin.service:
+  ansible.builtin.systemd:
     name: tailscaled
     enabled: true
     state: started
 
-# 이미 올바른 tailnet에 가입된 노드는 상태를 유지하고 새 노드만 인증한다.
-- name: 현재 Tailscale IPv4 조회
-  ansible.builtin.command: tailscale ip -4
-  register: tailscale_ip_before
+# ── 가입 상태 판정 ────────────────────────────────────────────
+#
+# `tailscale ip -4` 만 보지 않는다. 로그아웃 직후처럼 IP 가 남아 있는데
+# BackendState 는 Running 이 아닌 구간이 있다. 상태를 직접 본다.
+- name: 현재 tailnet 상태 조회
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status_before
   changed_when: false
   failed_when: false
   check_mode: false
+
+- name: 현재 BackendState 파싱
+  ansible.builtin.set_fact:
+    tailscale_backend_before: >-
+      {{ (tailscale_status_before.stdout | from_json).BackendState | default('Unknown')
+         if tailscale_status_before.rc == 0 else 'Unknown' }}
 
 - name: 미가입 노드에 사용할 Tailscale 인증 키 확인
   ansible.builtin.assert:
     that:
       - tailscale_auth_key | length > 0
-    fail_msg: >-
-      노드가 tailnet에 가입되어 있지 않습니다.
-      CNTLP_TAILSCALE_AUTH_KEY 환경변수로 인증 키를 전달하세요.
-  when:
-    - tailscale_ip_before.rc != 0
-      or tailscale_ip_before.stdout | trim | length == 0
+    fail_msg: |
+      노드가 tailnet 에 가입되어 있지 않은데 인증 키가 비어 있습니다.
+      Tailscale admin 콘솔 → Settings → Keys 에서 발급한 뒤:
+        CNTLP_TAILSCALE_AUTH_KEY=tskey-auth-xxxx ansible-playbook ...
+      재사용 가능(reusable) + 태그 부여 권한이 있는 키여야 합니다.
+      노드용은 ephemeral 로 발급하는 것을 권합니다 — defaults/main.yml 참고.
+  when: tailscale_backend_before != 'Running'
 
-- name: 미가입 노드를 tailnet에 등록
-  when:
-    - tailscale_ip_before.rc != 0
-      or tailscale_ip_before.stdout | trim | length == 0
+- name: 미가입 노드를 tailnet 에 등록
+  when: tailscale_backend_before != 'Running'
   block:
     - name: Tailscale 인증 키 임시 배치
       ansible.builtin.copy:
@@ -83,14 +100,24 @@
         mode: "0600"
       no_log: true
 
+    # --accept-dns=false 인 이유: MagicDNS 가 /etc/resolv.conf 를 갈아치우면
+    # 클러스터 DNS(CoreDNS)와 충돌한다. 노드는 클러스터 DNS 를 봐야 한다.
+    #
+    # --advertise-routes 는 값이 있을 때만 붙인다. 빈 문자열로 넘기면
+    # 기존에 광고 중이던 경로를 지워버린다.
     - name: 인증 키 파일로 tailnet 가입
       ansible.builtin.command:
-        argv:
-          - tailscale
-          - up
-          - "--auth-key=file:{{ tailscale_auth_key_path }}"
-          - "--hostname={{ tailscale_hostname }}"
-          - --timeout=2m
+        argv: >-
+          {{ ['tailscale', 'up',
+              '--auth-key=file:' ~ tailscale_auth_key_path,
+              '--hostname=' ~ tailscale_hostname,
+              '--advertise-tags=' ~ tailscale_tags,
+              '--accept-dns=false',
+              '--timeout=2m']
+             + (['--ssh'] if tailscale_ssh | bool else [])
+             + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
+                if tailscale_advertise_routes | length > 0 else [])
+             + ['--reset'] }}
       changed_when: true
       no_log: true
   always:
@@ -100,20 +127,64 @@
         state: absent
       no_log: true
 
-- name: 사용할 Tailscale IPv4 확정
-  ansible.builtin.command: tailscale ip -4
-  register: tailscale_ip_result
+# ── 결과 검증 ─────────────────────────────────────────────────
+
+- name: 가입 결과 조회
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status_after
   changed_when: false
   check_mode: false
 
-- name: Tailscale IPv4 형식 확인
+- name: tailnet IP·상태·등록 이름 추출
+  ansible.builtin.set_fact:
+    tailscale_ipv4: "{{ (tailscale_status_after.stdout | from_json).Self.TailscaleIPs
+                        | select('match', '^100\\.') | first | default('') }}"
+    tailscale_backend: "{{ (tailscale_status_after.stdout | from_json).BackendState }}"
+    # DNSName 은 "<이름>.<tailnet>.ts.net." 이다. 첫 라벨이 실제로 등록된 이름이다.
+    tailscale_registered_name: >-
+      {{ ((tailscale_status_after.stdout | from_json).Self.DNSName | default('')).split('.')
+         | first | default('') }}
+
+- name: 실제로 붙었는지 검사
   ansible.builtin.assert:
     that:
-      - tailscale_ip_result.stdout | trim | length > 0
-      - tailscale_ip_result.stdout | trim
-        is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
-    fail_msg: Tailscale IPv4를 확인할 수 없습니다.
+      - tailscale_backend == 'Running'
+      - tailscale_ipv4 | length > 0
+      - tailscale_ipv4 is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: >-
+      tailnet 조인에 실패했다. BackendState={{ tailscale_backend }},
+      IP={{ tailscale_ipv4 }}. auth key 가 만료됐거나 태그 부여 권한이 없을 수 있다.
+    success_msg: "tailnet 조인 완료 — {{ tailscale_hostname }} = {{ tailscale_ipv4 }}"
 
-- name: 이후 Kubernetes 역할에서 사용할 Tailscale IPv4 저장
-  ansible.builtin.set_fact:
-    tailscale_ipv4: "{{ tailscale_ip_result.stdout | trim }}"
+# ── VM 을 다시 만들었을 때 조용히 틀어지는 지점 ────────────────
+#
+# **VM 을 지워도 tailnet 의 디바이스는 남는다.** 새 VM 은 machine key 가 새것이라
+# Tailscale 이 같은 이름의 디바이스를 하나 더 만들고, 이름이 겹치므로 뒤에
+# `-1` 을 붙인다. 그러면 이 노드의 메시 이름과 IP 가 이전과 달라진다.
+#
+# 이게 조용히 지나가면 kubeadm join 의 --node-ip 가 바뀌고, 죽은 디바이스에
+# 남은 --advertise-routes 와 겹쳐 라우팅이 흔들린다. 그래서 여기서 멈춘다.
+#
+# 근본 해결은 노드용 auth key 를 **ephemeral** 로 발급하는 것이다 —
+# 오프라인이 되면 Tailscale 이 디바이스를 스스로 지운다. defaults/main.yml 참고.
+- name: tailnet 이 이름을 바꿔 등록하지 않았는지 검사
+  ansible.builtin.assert:
+    that: tailscale_registered_name == tailscale_hostname
+    fail_msg: |
+      tailnet 에 등록된 이름이 노드 이름과 다르다.
+        등록됨 : {{ tailscale_registered_name }}
+        기대   : {{ tailscale_hostname }}
+
+      같은 이름의 죽은 디바이스가 tailnet 에 남아 있어 Tailscale 이 접미사를
+      붙인 것이다. VM 을 다시 만들 때 생긴다.
+
+      Tailscale admin 콘솔에서 오프라인 디바이스 `{{ tailscale_hostname }}` 를
+      지운 뒤 이 롤을 다시 돌린다. 반복될 일이면 auth key 를 ephemeral 로
+      발급한다 — docs/runbook-onprem-vm-recreate.md 참고.
+    success_msg: "tailnet 이름 확인 — {{ tailscale_registered_name }}"
+
+# kubeadm join/init 이 이 주소를 --node-ip 로 쓴다. 영역 간 통신이 메시를 타야
+# 하므로 노드 IP 가 LAN 주소(192.168.x)면 다른 영역에서 못 닿는다.
+- name: 이후 Kubernetes 역할에서 사용할 Tailscale IPv4 안내
+  ansible.builtin.debug:
+    msg: "이 노드의 메시 IP = {{ tailscale_ipv4 }} (kubeadm --node-ip 로 쓴다)"
