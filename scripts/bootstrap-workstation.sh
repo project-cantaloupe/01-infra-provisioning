@@ -20,15 +20,17 @@ set -euo pipefail
 
 # ── 설정 ────────────────────────────────────────────────────────
 
+readonly REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # backend.tf 의 use_lockfile 이 요구하는 최소 버전.
 readonly TERRAFORM_MIN_VERSION="1.10"
 
-# kubectl apt 저장소 URL 에 **마이너까지만** 박힌다. 패치 버전은 경로가 아니다.
-#   core:/stable:/v1.36/deb   → 200
-#   core:/stable:/v1.36.3/deb → 403
-# 클러스터와 같은 마이너를 쓴다. AWS 컨트롤플레인이 서면 그 버전에 맞춘다.
-# 패치까지 고정하려면 경로가 아니라 apt 로 한다 — `apt-get install kubectl=1.36.3-1.1`
-K8S_MINOR="v1.36"
+# 클러스터 K8s 버전의 단일 출처는 ansible 롤이다. 여기 다시 적지 않는다 —
+# 워커의 kubelet 과 이 PC 의 kubectl 이 다른 마이너면 kubectl 이 클러스터에
+# 안 붙는다. 두 곳에 적어두면 한쪽만 올리게 된다.
+# 덮어쓰려면 --k8s-minor 를 쓴다.
+readonly K8S_DEFAULTS="${REPO_DIR}/ansible/roles/kubeadm-worker/defaults/main.yml"
+K8S_MINOR="$(sed -nE 's/^kubernetes_minor: *"([^"]+)".*/\1/p' "$K8S_DEFAULTS" 2>/dev/null || true)"
 
 SKIP_TERRAFORM=0
 SKIP_ANSIBLE=0
@@ -280,9 +282,8 @@ install_ansible() {
 # ── kubectl ─────────────────────────────────────────────────────
 
 install_kubectl() {
-  # pkgs.k8s.io 의 경로는 **마이너까지만** 받는다.
-  # core:/stable:/v1.36/deb  → 200
-  # core:/stable:/v1.36.3/deb → 403   (패치 버전은 경로가 아니다)
+  # pkgs.k8s.io 의 경로는 **마이너까지만** 받는다 (패치를 넣으면 403).
+  # 이유와 예시는 단일 출처에 적혀 있다 — $K8S_DEFAULTS 의 kubernetes_minor.
   # 여기서 안 막으면 apt-get update 에서야 터진다.
   if [[ ! "$K8S_MINOR" =~ ^v[0-9]+\.[0-9]+$ ]]; then
     if [[ "$K8S_MINOR" =~ ^v?([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]]; then
@@ -290,7 +291,9 @@ install_kubectl() {
       warn "K8S_MINOR='${K8S_MINOR}' 는 저장소 경로로 못 쓴다. '${fixed}' 로 고쳐서 진행한다."
       K8S_MINOR="$fixed"
     else
-      die "K8S_MINOR 형식이 틀렸다: '${K8S_MINOR}'  (예: v1.36)"
+      die "K8s 마이너 버전을 정하지 못했다: '${K8S_MINOR}'
+       ${K8S_DEFAULTS} 의 kubernetes_minor 를 읽지 못했을 수 있다.
+       --k8s-minor v1.36 처럼 직접 줄 수도 있다."
     fi
   fi
 

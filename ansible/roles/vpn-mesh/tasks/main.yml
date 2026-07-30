@@ -1,0 +1,105 @@
+---
+# Tailscale 에이전트 설치 + tailnet 조인.
+#
+# auth key 는 절대 코드나 로그에 남기지 않는다. no_log 를 건 이유가 그것이다.
+# 키가 유출되면 남이 우리 tailnet 에 노드를 붙일 수 있다.
+
+- name: auth key 가 있는지 먼저 확인한다
+  ansible.builtin.assert:
+    that:
+      - vpn_mesh_auth_key | length > 0
+    fail_msg: |
+      TAILSCALE_AUTH_KEY 가 비어 있다.
+      Tailscale admin 콘솔 → Settings → Keys 에서 발급한 뒤:
+        TAILSCALE_AUTH_KEY=tskey-auth-xxxx ansible-playbook ...
+      재사용 가능(reusable) + 태그 부여 권한이 있는 키여야 한다.
+
+- name: Tailscale GPG 키를 받는다
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_distribution_release }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+
+- name: Tailscale 저장소를 등록한다
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+      https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main
+    filename: tailscale
+    state: present
+
+# cache_valid_time 이 있어야 바로 위 apt_repository 가 이미 돌린 apt-get update 를
+# 한 번 더 돌리지 않는다 (apt_repository 의 update_cache 기본값이 yes 다).
+- name: Tailscale 을 깐다
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: tailscaled 를 켠다
+  ansible.builtin.systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: 이미 tailnet 에 붙어 있는지 본다
+  ansible.builtin.command: tailscale status --json
+  register: _ts_status
+  changed_when: false
+  failed_when: false
+
+- name: 상태를 파싱한다
+  ansible.builtin.set_fact:
+    _ts_backend: >-
+      {{ (_ts_status.stdout | from_json).BackendState | default('Unknown')
+         if _ts_status.rc == 0 else 'Unknown' }}
+
+# --advertise-routes 는 값이 있을 때만 붙인다. 빈 문자열로 넘기면
+# 기존에 광고 중이던 경로를 지워버린다.
+- name: tailnet 에 조인한다
+  ansible.builtin.command:
+    argv: >-
+      {{ ['tailscale', 'up',
+          '--authkey=' ~ vpn_mesh_auth_key,
+          '--hostname=' ~ inventory_hostname,
+          '--advertise-tags=' ~ vpn_mesh_tags,
+          '--accept-dns=false']
+         + (['--ssh'] if vpn_mesh_ssh | bool else [])
+         + (['--advertise-routes=' ~ (vpn_mesh_advertise_routes | join(','))]
+            if vpn_mesh_advertise_routes | length > 0 else [])
+         + ['--reset'] }}
+  when: _ts_backend != 'Running'
+  no_log: true
+  register: _ts_up
+  changed_when: _ts_up.rc == 0
+
+# --accept-dns=false 인 이유: MagicDNS 가 /etc/resolv.conf 를 갈아치우면
+# 클러스터 DNS(CoreDNS)와 충돌한다. 노드는 클러스터 DNS 를 봐야 한다.
+
+- name: 조인 결과를 확인한다
+  ansible.builtin.command: tailscale status --json
+  register: _ts_final
+  changed_when: false
+
+- name: tailnet IP 를 뽑는다
+  ansible.builtin.set_fact:
+    mesh_ipv4: "{{ (_ts_final.stdout | from_json).Self.TailscaleIPs
+                   | select('match', '^100\\.') | first | default('') }}"
+    mesh_state: "{{ (_ts_final.stdout | from_json).BackendState }}"
+
+- name: 실제로 붙었는지 검사한다
+  ansible.builtin.assert:
+    that:
+      - mesh_state == 'Running'
+      - mesh_ipv4 | length > 0
+    fail_msg: >-
+      tailnet 조인에 실패했다. BackendState={{ mesh_state }}, IP={{ mesh_ipv4 }}.
+      auth key 가 만료됐거나 태그 부여 권한이 없을 수 있다.
+    success_msg: "tailnet 조인 완료 — {{ inventory_hostname }} = {{ mesh_ipv4 }}"
+
+# kubeadm join 이 이 주소를 --node-ip 로 쓴다. 영역 간 통신이 메시를 타야 하므로
+# 노드 IP 가 LAN 주소(192.168.x)면 다른 영역에서 못 닿는다.
+- name: 메시 IP 를 이후 롤에 넘긴다
+  ansible.builtin.debug:
+    msg: "이 노드의 메시 IP = {{ mesh_ipv4 }} (kubeadm --node-ip 로 쓴다)"

@@ -1,0 +1,20 @@
+---
+# Tailscale SaaS 를 쓴다 (decisions/20260728_network-connectivity-and-access,
+# 2026-07-29 변경). headscale 을 자체호스팅하지 않는다.
+
+# tailnet auth key. **절대 여기 적지 않는다.**
+# 환경변수로 넘긴다:  TAILSCALE_AUTH_KEY=tskey-auth-... ansible-playbook ...
+vpn_mesh_auth_key: "{{ lookup('env', 'TAILSCALE_AUTH_KEY') }}"
+
+# 노드에 붙일 tailnet 태그. ACL 이 이걸로 사람과 서버를 가른다.
+vpn_mesh_tags: "tag:k8s-node"
+
+# 서브넷 라우터로 광고할 대역. 단일 클러스터라 노드 IP 도달성만으로는 부족하고
+# 파드 CIDR 까지 라우팅돼야 한다 (decisions/20260728_network-connectivity-and-access).
+#
+# **조인 전에는 비워 둔다.** 파드 CIDR 은 kubeadm join 이후에 확정된다.
+# 값이 정해지면 여기 넣고 롤을 다시 돌린다.
+vpn_mesh_advertise_routes: []
+
+# SSH 를 tailnet 으로도 받을지. 홈랩 사설망에서 이미 SSH 가 되므로 기본은 끔.
+vpn_mesh_ssh: false

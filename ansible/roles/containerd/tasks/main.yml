@@ -1,0 +1,55 @@
+---
+# containerd. kubelet 이 CRI 로 붙는 런타임이다.
+#
+# **SystemdCgroup = true 가 이 롤의 전부라고 봐도 된다.** 이게 빠지면
+# kubelet 은 정상 부팅하고 파드도 뜨는데, cgroup 드라이버가 kubelet(systemd)과
+# 어긋나서 리소스 회계가 틀어지고 부하가 걸릴 때 파드가 불안정해진다.
+# 에러로 안 드러나서 원인 찾기가 특히 어렵다.
+
+- name: containerd 를 깐다
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: config 디렉터리를 만든다
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+
+# 패키지 기본 config.toml 은 비어 있다시피 해서 기본값을 펼쳐야 수정할 수 있다.
+- name: 기본 설정이 없으면 생성한다
+  ansible.builtin.shell:
+    cmd: containerd config default > /etc/containerd/config.toml
+    creates: /etc/containerd/config.toml
+
+- name: SystemdCgroup 을 켠다
+  ansible.builtin.lineinfile:
+    path: /etc/containerd/config.toml
+    regexp: '^(\s*)SystemdCgroup\s*=\s*false\s*$'
+    line: '\1SystemdCgroup = true'
+    backrefs: true
+  notify: restart containerd
+
+- name: containerd 를 켠다
+  ansible.builtin.systemd:
+    name: containerd
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: 핸들러를 지금 돌린다
+  ansible.builtin.meta: flush_handlers
+
+# 설정이 실제로 먹었는지 본다. lineinfile 이 조용히 아무것도 안 바꿨을 수 있다.
+- name: SystemdCgroup 이 실제로 true 인지 확인한다
+  ansible.builtin.command: grep -c 'SystemdCgroup = true' /etc/containerd/config.toml
+  register: _cgroup
+  changed_when: false
+  failed_when: _cgroup.stdout | int < 1
+
+- name: containerd 가 CRI 로 응답하는지 확인한다
+  ansible.builtin.command: ctr version
+  changed_when: false

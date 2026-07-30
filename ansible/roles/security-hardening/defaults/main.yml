@@ -1,0 +1,15 @@
+---
+# 방화벽을 켤지. 켜는 경우 아래 순서를 반드시 지킨다 (tasks/main.yml 주석 참고).
+security_enable_firewall: true
+
+# SSH 를 허용할 대역. 기본은 사설 대역 전체다.
+# 여기가 비면 ufw enable 순간 자기 SSH 를 끊는다.
+security_ssh_allow_from:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+  - 100.64.0.0/10 # Tailscale CGNAT 대역
+
+# 메시 인터페이스. 이 인터페이스로 들어오는 것은 통째로 허용한다.
+# 클러스터 내부 통신(kubelet 10250, NodePort, CNI)이 전부 여기를 탄다.
+security_mesh_interface: tailscale0

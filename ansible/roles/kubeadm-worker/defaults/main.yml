@@ -1,0 +1,23 @@
+---
+# K8s 버전 — 1.36.3 확정 (2026-07-29).
+#
+# **저장소 경로에는 마이너까지만 들어간다.**
+#   core:/stable:/v1.36/deb   → 200
+#   core:/stable:/v1.36.3/deb → 403
+# 패치 고정은 경로가 아니라 apt 버전 지정으로 한다.
+kubernetes_minor: "v1.36"
+kubernetes_patch: "1.36.3"
+
+# 컨트롤플레인이 발급한 join 명령의 구성요소.
+# `kubeadm token create --print-join-command` 을 컨트롤플레인 노드에서 돌려 얻는다.
+# **토큰은 절대 리포에 적지 않는다.** 환경변수로 넘긴다.
+kubeadm_api_endpoint: "{{ lookup('env', 'KUBEADM_API_ENDPOINT') }}" # host:6443
+kubeadm_token: "{{ lookup('env', 'KUBEADM_TOKEN') }}"
+kubeadm_ca_cert_hash: "{{ lookup('env', 'KUBEADM_CA_CERT_HASH') }}" # sha256:...
+
+# 조인 시 붙일 노드 라벨. 팀 협약을 따른다.
+# → decisions/20260729_k8s-labeling-convention.md
+# 인벤토리 그룹(platform_onp, role_devops)에서 그대로 끌어온다.
+kubeadm_node_labels:
+  platform: "{{ (group_names | select('match', '^platform_') | first | default('platform_unknown')) | replace('platform_', '') }}"
+  role: "{{ (group_names | select('match', '^role_') | first | default('role_unknown')) | replace('role_', '') }}"

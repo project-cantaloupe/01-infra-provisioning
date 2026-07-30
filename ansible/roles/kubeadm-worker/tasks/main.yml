@@ -1,0 +1,211 @@
+---
+# kubelet·kubeadm 설치 후 워커로 조인한다.
+#
+# 이 롤은 두 부분으로 갈린다.
+#   1. 설치 — 외부 의존 없음. 언제든 돌릴 수 있다
+#   2. 조인 — 컨트롤플레인이 발급한 토큰이 있어야 한다
+# 토큰이 없으면 1번까지만 하고 멈춘다. 조용히 건너뛰지 않는다.
+
+# ── 0. 사전요건 검사 ───────────────────────────────────────────
+#
+# **여기서 설정하지 않는다. 검사만 한다.**
+# swap·커널 모듈·sysctl 은 common 롤이, 런타임은 containerd 롤이 소유한다.
+# 여기서 다시 설정하면 컨트롤플레인 롤에도 또 복제하게 되고 세 곳이 어긋난다.
+#
+# 검사가 필요한 이유는 `--tags join` 으로 이 롤만 단독 실행이 가능하기 때문이다.
+# 그 경로로 들어오면 common 이 건너뛰어진다. kubeadm 자체 preflight 가 일부는
+# 잡지만 늦게, 불친절한 메시지로 잡는다. 여기서 먼저 갈라준다.
+
+- name: 사전요건을 모은다
+  ansible.builtin.shell: |
+    set -o pipefail
+    # `|| echo inactive` 를 쓰지 않는다. is-active 는 실패해도 상태를 stdout 에
+    # 찍으므로 "inactive" 가 두 줄 나오고, 두 번째 줄이 아래 파싱을 깨뜨린다.
+    # containerd 가 죽어 있을 때 — 즉 이 검사가 필요한 바로 그때 — 터진다.
+    runtime="$(systemctl is-active containerd 2>/dev/null | head -1 || true)"
+    echo "swap: $(swapon --show --noheadings | wc -l)"
+    echo "br: $(lsmod | grep -c '^br_netfilter' || true)"
+    echo "overlay: $(lsmod | grep -c '^overlay' || true)"
+    echo "forward: $(sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)"
+    echo "bridgenf: $(sysctl -n net.bridge.bridge-nf-call-iptables 2>/dev/null || echo 0)"
+    echo "runtime: ${runtime:-inactive}"
+  args:
+    executable: /bin/bash
+  register: _prereq
+  changed_when: false
+
+# 위에서 YAML 로 찍었으니 그대로 읽는다.
+- name: 결과를 파싱한다
+  ansible.builtin.set_fact:
+    _pre: "{{ _prereq.stdout | from_yaml }}"
+
+- name: 사전요건이 충족됐는지 본다
+  ansible.builtin.assert:
+    that:
+      - _pre.swap | int == 0
+      - _pre.br | int > 0
+      - _pre.overlay | int > 0
+      - _pre.forward | int == 1
+      - _pre.bridgenf | int == 1
+      - _pre.runtime == 'active'
+    fail_msg: |
+      kubeadm 사전요건이 충족되지 않았다. 이 롤은 이것들을 설정하지 않는다.
+      common·containerd 롤을 먼저 돌린다:
+
+        ansible-playbook playbooks/site-workers.yaml --tags os
+
+      현재 상태 (기대값):
+        swap 항목 수      = {{ _pre.swap }}       (0)
+        br_netfilter      = {{ _pre.br }}         (1 이상)
+        overlay           = {{ _pre.overlay }}    (1 이상)
+        ip_forward        = {{ _pre.forward }}    (1)
+        bridge-nf-call-iptables = {{ _pre.bridgenf }}  (1)
+        containerd        = {{ _pre.runtime }}    (active)
+    success_msg: "사전요건 충족 — swap off, br_netfilter/overlay, sysctl, containerd active"
+
+# ── 1. 설치 ────────────────────────────────────────────────────
+
+- name: keyrings 디렉터리를 만든다
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+# curl | gpg 파이프를 쓰지 않는다. curl 이 403 이어도 gpg 가 성공하면서
+# 0바이트 keyring 을 남기고, 그게 apt-get update 에서야 터진다.
+# scripts/bootstrap-workstation.sh 가 같은 이유로 같은 구조를 쓴다.
+- name: Kubernetes GPG 키를 받는다
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor }}/deb/Release.key"
+    dest: /tmp/k8s-release.key
+    mode: "0644"
+
+- name: 받은 키가 비어 있지 않은지 본다
+  ansible.builtin.stat:
+    path: /tmp/k8s-release.key
+  register: _k8s_key
+
+- name: 빈 키면 멈춘다
+  ansible.builtin.assert:
+    that: _k8s_key.stat.size > 0
+    fail_msg: >-
+      Kubernetes GPG 키가 비어 있다. kubernetes_minor={{ kubernetes_minor }} 가
+      저장소에 없는 버전일 수 있다 (패치 버전을 넣으면 403 이다).
+
+- name: 키를 dearmor 한다
+  ansible.builtin.command:
+    cmd: gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/k8s-release.key
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Kubernetes 저장소를 등록한다
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg]
+      https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor }}/deb/ /
+    filename: kubernetes
+    state: present
+
+# 패치까지 고정한다. 마이너가 컨트롤플레인과 어긋나면 조인이 거부된다.
+- name: kubelet·kubeadm·kubectl 을 깐다
+  ansible.builtin.apt:
+    name:
+      - "kubelet={{ kubernetes_patch }}-*"
+      - "kubeadm={{ kubernetes_patch }}-*"
+      - "kubectl={{ kubernetes_patch }}-*"
+    state: present
+    update_cache: true
+    # 위 apt_repository 가 이미 apt-get update 를 돌렸다. 두 번 돌리지 않는다.
+    cache_valid_time: 3600
+    allow_change_held_packages: true
+
+# apt upgrade 가 마음대로 마이너를 올리면 조인이 깨진다.
+- name: 버전을 hold 한다
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: kubelet 을 켠다
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+
+- name: 설치된 버전을 확인한다
+  ansible.builtin.command: kubeadm version -o short
+  register: _kubeadm_ver
+  changed_when: false
+
+- name: 버전이 의도대로인지 본다
+  ansible.builtin.assert:
+    that: _kubeadm_ver.stdout is search(kubernetes_patch)
+    fail_msg: "kubeadm 이 {{ kubernetes_patch }} 가 아니다: {{ _kubeadm_ver.stdout }}"
+    success_msg: "kubeadm {{ _kubeadm_ver.stdout }}"
+
+# ── 2. 조인 ────────────────────────────────────────────────────
+
+- name: 이미 조인돼 있는지 본다
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: _kubelet_conf
+
+- name: 조인에 필요한 값이 다 있는지 본다
+  ansible.builtin.set_fact:
+    _join_ready: >-
+      {{ (kubeadm_api_endpoint | length > 0)
+         and (kubeadm_token | length > 0)
+         and (kubeadm_ca_cert_hash | length > 0) }}
+
+# 값이 없으면 조용히 넘어가지 않는다. 무엇이 없는지 말하고 멈춘다.
+- name: 조인 정보가 없으면 여기서 멈춘다
+  ansible.builtin.fail:
+    msg: |
+      설치는 끝났지만 조인 정보가 없다. 컨트롤플레인 노드에서:
+        kubeadm token create --print-join-command
+      결과를 아래 3개로 나눠 환경변수로 넘긴다:
+        KUBEADM_API_ENDPOINT=<host>:6443
+        KUBEADM_TOKEN=<token>
+        KUBEADM_CA_CERT_HASH=sha256:<hash>
+      비어 있는 것: {{
+        (['KUBEADM_API_ENDPOINT'] if kubeadm_api_endpoint | length == 0 else [])
+        + (['KUBEADM_TOKEN'] if kubeadm_token | length == 0 else [])
+        + (['KUBEADM_CA_CERT_HASH'] if kubeadm_ca_cert_hash | length == 0 else [])
+      }}
+  when:
+    - not _kubelet_conf.stat.exists
+    - not _join_ready
+
+# --node-ip 를 메시 IP 로 준다. LAN 주소로 조인하면 AWS·GCP 에서 이 노드에
+# 못 닿아서 kubectl logs·exec 와 메트릭 수집이 전부 실패한다.
+- name: 워커로 조인한다
+  ansible.builtin.command:
+    argv:
+      - kubeadm
+      - join
+      - "{{ kubeadm_api_endpoint }}"
+      - "--token={{ kubeadm_token }}"
+      - "--discovery-token-ca-cert-hash={{ kubeadm_ca_cert_hash }}"
+      - "--node-name={{ inventory_hostname }}"
+      - "--node-labels=platform={{ kubeadm_node_labels.platform }},role={{ kubeadm_node_labels.role }}"
+  when:
+    - not _kubelet_conf.stat.exists
+    - _join_ready
+  no_log: true
+  register: _join
+  changed_when: _join.rc == 0
+
+- name: 조인 결과를 확인한다
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: _kubelet_conf_after
+
+- name: kubelet.conf 가 생겼는지 검사한다
+  ansible.builtin.assert:
+    that: _kubelet_conf_after.stat.exists
+    fail_msg: "조인이 끝났는데 /etc/kubernetes/kubelet.conf 가 없다."
+    success_msg: >-
+      조인 완료 — {{ inventory_hostname }}
+      (platform={{ kubeadm_node_labels.platform }}, role={{ kubeadm_node_labels.role }}).
+      CNI 가 아직이면 NotReady 가 정상이다.
