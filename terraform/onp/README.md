@@ -1,4 +1,4 @@
-# terraform/onprem
+# terraform/onp
 
 Proxmox 호스트 위에 **K8s 워커 VM** 을 만든다. 컨트롤플레인은 여기 없다 —
 마스터 3대는 전부 AWS 에 있다.
@@ -83,7 +83,7 @@ curl -s https://cloud-images.ubuntu.com/noble/current/SHA256SUMS \
 ## 실행
 
 `backend.tf` 가 S3 를 쓰므로 `terraform init` 은 AWS 자격증명과
-`cantaloupe-tfstate` 버킷을 요구한다. 문법만 볼 거면 백엔드를 건너뛴다.
+`cntlp-tfstate` 버킷을 요구한다. 문법만 볼 거면 백엔드를 건너뛴다.
 
 ```bash
 # 코드가 맞는지만 확인 (버킷·자격증명 불필요)
@@ -142,7 +142,7 @@ v0.111 기준 이미 갈린 것:
 VM 이 뜬 뒤 ansible 이 잡는지부터 확인한다. **여기서 자주 끊긴다.**
 
 ```bash
-ansible-inventory -i ../../ansible/inventories/onprem/proxmox.yaml --graph
+ansible-inventory -i ../../ansible/inventories/onp/proxmox.yaml --graph
 ```
 
 `@platform_onp` 와 `@role_devops` 아래에 방금 만든 VM 이 보여야 한다.

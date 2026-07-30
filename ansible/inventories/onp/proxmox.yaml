@@ -16,7 +16,7 @@ want_facts: true
 # VM 이름으로 접속을 시도하고, 그 이름은 DNS 에 없으므로 UNREACHABLE 이 된다.
 #
 # IP 는 proxmox_agent_interfaces 에 들어온다 — **qemu-guest-agent 가 떠 있어야 한다.**
-# (cloud-init 이 설치한다. terraform/onprem/cloud-init/worker.yaml.tftpl 참고)
+# (cloud-init 이 설치한다. terraform/onp/cloud-init/worker.yaml.tftpl 참고)
 # lo 를 빼고 첫 IPv4 를 골라 CIDR 접미사를 떼어낸다.
 # ipconfig0 를 쓰지 않는 이유는 그쪽이 고정 IP 일 때만 값이 있기 때문이다.
 compose:

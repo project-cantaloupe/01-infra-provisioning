@@ -75,7 +75,7 @@
       - apply
       - --server-side
       - --force-conflicts
-      - --field-manager=ansible-cantaloupe
+      - --field-manager=ansible-cntlp
       - -f
       - "{{ calico_crd_manifest_path }}"
   changed_when: false
@@ -89,7 +89,7 @@
       - apply
       - --server-side
       - --force-conflicts
-      - --field-manager=ansible-cantaloupe
+      - --field-manager=ansible-cntlp
       - -f
       - "{{ calico_operator_manifest_path }}"
   changed_when: false
@@ -118,7 +118,7 @@
       - apply
       - --server-side
       - --force-conflicts
-      - --field-manager=ansible-cantaloupe
+      - --field-manager=ansible-cntlp
       - -f
       - "{{ calico_custom_resources_path }}"
   changed_when: false

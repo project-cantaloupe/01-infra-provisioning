@@ -143,7 +143,7 @@ if command -v pveversion >/dev/null 2>&1; then
   die "Proxmox 호스트에서 실행하고 있다. 이 스크립트는 워크스테이션용이다.
        Proxmox 호스트에는 아무것도 설치하지 않는다 — 필요한 것은 설정뿐이다
        (snippets 콘텐츠 타입, API 토큰, root SSH).
-       terraform/onprem/README.md 를 본다."
+       terraform/onp/README.md 를 본다."
 fi
 
 # shellcheck disable=SC1091
@@ -238,7 +238,7 @@ install_ansible() {
     ok "ansible 설치 완료"
   fi
 
-  # Proxmox 동적 인벤토리(ansible/inventories/onprem/proxmox.yaml)의 의존성.
+  # Proxmox 동적 인벤토리(ansible/inventories/onp/proxmox.yaml)의 의존성.
   #
   # pip3 install --user 를 쓰지 않는다. Ubuntu 24.04 는 PEP 668
   # (EXTERNALLY-MANAGED) 이라 시스템 파이썬에 pip 로 넣는 것이 막혀 있다.
@@ -362,18 +362,18 @@ cat <<'NEXT'
 다음:
 
   1. terraform 코드 확인 (버킷·자격증명 없이 가능)
-       cd terraform/onprem
+       cd terraform/onp
        terraform init -backend=false && terraform validate
 
   2. Proxmox 준비 — 토큰 발급, 스토리지에 Snippets 콘텐츠 타입 켜기
-       terraform/onprem/README.md
+       terraform/onp/README.md
 
   3. VM 생성
        cp terraform.tfvars.example terraform.tfvars   # 채운다
        terraform init && terraform plan && terraform apply
 
   4. 인벤토리가 VM 을 잡는지 확인 — 여기서 자주 끊긴다
-       ansible-inventory -i ansible/inventories/onprem/proxmox.yaml --graph
+       ansible-inventory -i ansible/inventories/onp/proxmox.yaml --graph
 
 kubectl 은 AWS 컨트롤플레인이 서고 이 PC 가 메시에 들어가야 쓸 수 있다.
 NEXT

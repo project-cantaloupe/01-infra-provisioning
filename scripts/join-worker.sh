@@ -160,10 +160,10 @@ fi
 ok "조인 정보 3개 형식 확인"
 
 # 3. 환경 스크립트가 있는가
-[[ -f "$REPO_DIR/scripts/cantaloupe-env.sh" ]] \
-  || die "scripts/cantaloupe-env.sh 가 없다."
+[[ -f "$REPO_DIR/scripts/cntlp-env.sh" ]] \
+  || die "scripts/cntlp-env.sh 가 없다."
 # shellcheck disable=SC1091
-source "$REPO_DIR/scripts/cantaloupe-env.sh" >/dev/null \
+source "$REPO_DIR/scripts/cntlp-env.sh" >/dev/null \
   || die "환경 설정에 실패했다. terraform.tfvars 를 확인한다."
 ok "Proxmox 자격증명 로드"
 

@@ -54,12 +54,12 @@ etcd에 있는 것이라 Proxmox와 무관하다. 지우지 않고 재조인하�
 
 ### 2-4. tfstate가 아직 로컬이다
 
-`terraform/onprem/backend_override.tf`가 S3 백엔드를 우회하고 있다. **다른 PC에서는
+`terraform/onp/backend_override.tf`가 S3 백엔드를 우회하고 있다. **다른 PC에서는
 destroy할 수 없다.** AWS가 서면 정리한다.
 
 ```bash
-rm terraform/onprem/backend_override.tf
-terraform -chdir=terraform/onprem init -migrate-state
+rm terraform/onp/backend_override.tf
+terraform -chdir=terraform/onp init -migrate-state
 ```
 
 ### 2-5. VM 안의 데이터는 전부 사라진다 (현재)
@@ -101,7 +101,7 @@ VM을 유지한 채 재조인해서 파드 네트워킹이 이상하면 **재부
 
 ```bash
 cd repos/01-infra-provisioning
-source scripts/cantaloupe-env.sh     # source 로 불러야 한다
+source scripts/cntlp-env.sh     # source 로 불러야 한다
 ```
 
 ### 1. 클러스터에서 노드를 뺀다
@@ -126,17 +126,17 @@ ephemeral 키로 등록했다면 오프라인 후 자동으로 사라지므로 �
 
 ```bash
 # 빠른 경로 — VM만 지운다. OS 이미지(약 600MB)를 다시 받지 않는다
-terraform -chdir=terraform/onprem destroy -target='proxmox_virtual_environment_vm.worker'
+terraform -chdir=terraform/onp destroy -target='proxmox_virtual_environment_vm.worker'
 
 # 전부 지우려면 (이미지·스니펫까지)
-terraform -chdir=terraform/onprem destroy
+terraform -chdir=terraform/onp destroy
 ```
 
 ### 4. VM을 다시 만든다
 
 ```bash
-terraform -chdir=terraform/onprem plan     # 반드시 눈으로 본다
-terraform -chdir=terraform/onprem apply
+terraform -chdir=terraform/onp plan     # 반드시 눈으로 본다
+terraform -chdir=terraform/onp apply
 ```
 
 ### 5. 인벤토리가 잡는지 확인한다 — **여기서 자주 끊긴다**
@@ -239,7 +239,7 @@ VM을 다시 만드는 쪽이 더 깨끗하다. 흔적이 애초에 없다.
 
 | 증상 | 원인 | 대응 |
 |---|---|---|
-| `ansible-inventory --graph`가 호스트 0개 | `PROXMOX_*` 미설정, `python3-proxmoxer` 없음 | `source scripts/cantaloupe-env.sh` |
+| `ansible-inventory --graph`가 호스트 0개 | `PROXMOX_*` 미설정, `python3-proxmoxer` 없음 | `source scripts/cntlp-env.sh` |
 | `@platform_onp` 그룹이 없다 | Proxmox 태그 누락 | `tags = ["platform-onp", "role-devops"]` 확인 |
 | `Permission denied (publickey)` | `group_vars` 미적용 | 플래그 없이 `ansible platform_onp -m ping` 재확인 |
 | VM에 IP가 안 보인다 | `qemu-guest-agent` 미기동 | 1~2분 대기. cloud-init 로그 확인 |

@@ -30,8 +30,8 @@
 # ── 하지 않는 일 ────────────────────────────────────────────────
 #
 # - **SSH 키 경로를 내보내지 않는다.** 기본값 `~/.ssh/cantaloupe_ed25519` 는
-#   inventories/onprem/group_vars/platform_onp.yml 이 이미 갖고 있다.
-#   CANTALOUPE_SSH_KEY 는 그 기본값을 **덮으려는** 사람이 직접 쓰는 변수다.
+#   inventories/onp/group_vars/platform_onp.yml 이 이미 갖고 있다.
+#   CNTLP_SSH_KEY 는 그 기본값을 **덮으려는** 사람이 직접 쓰는 변수다.
 # - **terraform 에는 아무 영향이 없다.** terraform 은 tfvars 를 직접 읽는다.
 # - **온프렘 전용이다.** AWS·GCP 인벤토리는 다른 자격증명(AWS 자격증명,
 #   GCP_PROJECT)을 요구하는데 여기서 다루지 않는다.
@@ -48,7 +48,7 @@
 # ── 사용법 ──────────────────────────────────────────────────────
 #
 # **source 로 불러야 한다.** 실행하면 자식 셸에서 export 하고 끝난다.
-#   source scripts/cantaloupe-env.sh
+#   source scripts/cntlp-env.sh
 #   cd ansible && ansible-playbook playbooks/site-workers.yaml --tags common
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -56,14 +56,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   exit 1
 fi
 
-_cantaloupe_env() {
+_cntlp_env() {
   local repo tfvars
   repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  tfvars="${repo}/terraform/onprem/terraform.tfvars"
+  tfvars="${repo}/terraform/onp/terraform.tfvars"
 
   if [[ ! -f "$tfvars" ]]; then
     echo "terraform.tfvars 가 없다: $tfvars" >&2
-    echo "  cp terraform/onprem/terraform.tfvars.example terraform/onprem/terraform.tfvars" >&2
+    echo "  cp terraform/onp/terraform.tfvars.example terraform/onp/terraform.tfvars" >&2
     return 1
   fi
 
@@ -94,7 +94,7 @@ _cantaloupe_env() {
   # (ANSIBLE_PYTHON_WARNINGS 라는 설정은 없다. ansible 은 이 변수를 읽지 않는다)
   export PYTHONWARNINGS=ignore
 
-  # CANTALOUPE_SSH_KEY 를 여기서 세우지 않는 이유는 위 "하지 않는 일" 참고.
+  # CNTLP_SSH_KEY 를 여기서 세우지 않는 이유는 위 "하지 않는 일" 참고.
 
   # 토큰은 찍지 않는다. 무엇이 설정됐는지만 알린다.
   printf '환경 설정 완료 — PROXMOX_URL=%s PROXMOX_USER=%s (토큰 2개 설정됨)\n' \
@@ -102,5 +102,5 @@ _cantaloupe_env() {
   printf 'ANSIBLE_CONFIG=%s\n' "$ANSIBLE_CONFIG"
 }
 
-_cantaloupe_env
-unset -f _cantaloupe_env
+_cntlp_env
+unset -f _cntlp_env

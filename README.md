@@ -39,8 +39,8 @@ Terraform과 Ansible은 서로를 호출하지 않는다. Ansible은 Tailscale �
 
 | 문서 | 언제 |
 |---|---|
-| [docs/runbook-onprem-vm-recreate.md](docs/runbook-onprem-vm-recreate.md) | 온프렘 워커 VM을 지우고 다시 만들어 재조인할 때. 무엇이 멱등이고 무엇이 사람 손을 요구하는지 |
-| [terraform/onprem/README.md](terraform/onprem/README.md) | Proxmox 사전 설정(API 토큰, snippets 콘텐츠 타입) |
+| [docs/runbook-onp-vm-recreate.md](docs/runbook-onp-vm-recreate.md) | 온프렘 워커 VM을 지우고 다시 만들어 재조인할 때. 무엇이 멱등이고 무엇이 사람 손을 요구하는지 |
+| [terraform/onp/README.md](terraform/onp/README.md) | Proxmox 사전 설정(API 토큰, snippets 콘텐츠 타입) |
 
 ## 구조
 
@@ -53,7 +53,7 @@ terraform/
   aws/compute/   Control Plane과 Worker EC2
   aws/database/  애플리케이션용 PostgreSQL RDS
   gcp/           향후 GCP Worker
-  onprem/        향후 On-Prem Worker
+  onp/           온프렘 Proxmox Worker
 ansible/
   inventories/   동적 인벤토리 (손으로 IP 를 적지 않는다)
   roles/         OS 설정, K8s 설치, VPN
