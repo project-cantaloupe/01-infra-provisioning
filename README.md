@@ -20,6 +20,17 @@ ansible-playbook playbooks/bootstrap-argocd.yaml
 
 3번 이후로는 클러스터 변경을 여기서 하지 않는다. `k8s-manifests` 로 간다.
 
+> **위 순서는 아직 전부 성립하지 않는다.** `site-control-plane.yaml` 과
+> `bootstrap-argocd.yaml` 은 파일이 없다. 지금 있는 것은 `site-workers.yaml`
+> 하나다 (→ `tasks/todo/002_bootstrap-blockers.md` 5번).
+
+## 런북
+
+| 문서 | 언제 |
+|---|---|
+| [docs/runbook-onprem-vm-recreate.md](docs/runbook-onprem-vm-recreate.md) | 온프렘 워커 VM을 지우고 다시 만들어 재조인할 때. 무엇이 멱등이고 무엇이 사람 손을 요구하는지 |
+| [terraform/onprem/README.md](terraform/onprem/README.md) | Proxmox 사전 설정(API 토큰, snippets 콘텐츠 타입) |
+
 ## 구조
 
 ```

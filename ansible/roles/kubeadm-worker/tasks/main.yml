@@ -144,12 +144,40 @@
     fail_msg: "kubeadm 이 {{ kubernetes_patch }} 가 아니다: {{ _kubeadm_ver.stdout }}"
     success_msg: "kubeadm {{ _kubeadm_ver.stdout }}"
 
-# ── 2. 조인 ────────────────────────────────────────────────────
+# ── 2. 조인 상태 판정 ──────────────────────────────────────────
+#
+# **"kubelet.conf 가 있으면 조인됨" 은 틀린 판정이다.** 클러스터를 다시 세우거나
+# 엔드포인트를 옮기면 파일은 그대로 남고 내용만 낡는다. 파일 존재만 보고 건너뛰면
+# 롤이 "조인 완료" 라고 보고하는데 노드는 죽은 클러스터를 보고 있다.
+# 조용히 성공하는 형태라 알아채기 가장 어렵다.
+#
+# 그래서 **어디에 붙어 있는지**를 본다. 상태는 넷 중 하나다.
+#
+#   깨끗함        조인 흔적 없음                   → 조인한다
+#   일치          기대 엔드포인트에 붙어 있음      → 건너뛴다 (멱등)
+#   불일치        다른 엔드포인트에 붙어 있음      → 멈춘다
+#   더러움        kubelet.conf 는 없는데 흔적 남음 → 멈춘다 (조인 중간 실패)
+#
+# 불일치·더러움에서 멈추는 것을 넘기려면 `kubeadm_force_rejoin=true` 를 준다.
+# 그때만 `kubeadm reset` 이 돈다. 기본값으로는 절대 자원을 지우지 않는다.
 
-- name: 이미 조인돼 있는지 본다
+- name: 조인 흔적을 모은다
   ansible.builtin.stat:
-    path: /etc/kubernetes/kubelet.conf
-  register: _kubelet_conf
+    path: "{{ item }}"
+  loop:
+    - /etc/kubernetes/kubelet.conf
+    - /etc/kubernetes/pki/ca.crt
+    - /var/lib/kubelet/config.yaml
+  register: _k8s_traces
+
+# kubelet.conf 는 kubeconfig 라서 서버 URL 이 평문으로 들어 있다.
+# 토큰·키는 여기 없으므로 읽어도 비밀이 새지 않는다.
+- name: 현재 붙어 있는 엔드포인트를 읽는다
+  ansible.builtin.command:
+    cmd: sed -nE 's#^[[:space:]]*server:[[:space:]]*https?://##p' /etc/kubernetes/kubelet.conf
+  register: _cur_server
+  changed_when: false
+  when: _k8s_traces.results[0].stat.exists
 
 - name: 조인에 필요한 값이 다 있는지 본다
   ansible.builtin.set_fact:
@@ -157,6 +185,59 @@
       {{ (kubeadm_api_endpoint | length > 0)
          and (kubeadm_token | length > 0)
          and (kubeadm_ca_cert_hash | length > 0) }}
+    _joined: "{{ _k8s_traces.results[0].stat.exists }}"
+    _dirty: >-
+      {{ (not _k8s_traces.results[0].stat.exists)
+         and (_k8s_traces.results[1].stat.exists
+              or _k8s_traces.results[2].stat.exists) }}
+    _cur_endpoint: "{{ (_cur_server.stdout | default('') | trim).split('\n') | first | default('') }}"
+
+- name: 붙어 있는 곳이 기대와 같은지 본다
+  ansible.builtin.set_fact:
+    # 엔드포인트를 아직 모르면(설치만 하는 경로) 비교하지 않는다.
+    _endpoint_matches: >-
+      {{ (kubeadm_api_endpoint | length == 0)
+         or (_cur_endpoint == kubeadm_api_endpoint) }}
+
+- name: 다른 클러스터에 붙어 있으면 멈춘다
+  ansible.builtin.fail:
+    msg: |
+      이 노드는 이미 **다른** 엔드포인트에 조인돼 있다.
+        현재 : {{ _cur_endpoint }}
+        기대 : {{ kubeadm_api_endpoint }}
+
+      그대로 두면 노드가 낡은 클러스터를 계속 본다. 둘 중 하나를 고른다.
+
+        1. VM 을 다시 만든다 (권장 — 가장 깨끗하다)
+             kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data
+             kubectl delete node {{ inventory_hostname }}
+             terraform -chdir=terraform/onprem destroy -target='proxmox_virtual_environment_vm.worker'
+             terraform -chdir=terraform/onprem apply
+
+        2. VM 을 유지하고 이 노드만 재조인한다
+             먼저 위 drain·delete 로 클러스터에서 노드를 지운 뒤:
+             ansible-playbook playbooks/site-workers.yaml --tags join -e kubeadm_force_rejoin=true
+
+      docs/runbook-onprem-vm-recreate.md 를 본다.
+  when:
+    - _joined
+    - not _endpoint_matches
+    - not kubeadm_force_rejoin | bool
+
+- name: 조인이 중간에 깨진 흔적이 있으면 멈춘다
+  ansible.builtin.fail:
+    msg: |
+      kubelet.conf 는 없는데 조인 흔적이 남아 있다. 이전 조인이 중간에 실패한 상태다.
+        /etc/kubernetes/pki/ca.crt      = {{ _k8s_traces.results[1].stat.exists }}
+        /var/lib/kubelet/config.yaml    = {{ _k8s_traces.results[2].stat.exists }}
+
+      이 상태로 kubeadm join 을 다시 돌리면 preflight 가
+      "FileAvailable--etc-kubernetes-pki-ca.crt" 로 거부한다. 먼저 지운다.
+
+        ansible-playbook playbooks/site-workers.yaml --tags join -e kubeadm_force_rejoin=true
+  when:
+    - _dirty
+    - not kubeadm_force_rejoin | bool
 
 # 값이 없으면 조용히 넘어가지 않는다. 무엇이 없는지 말하고 멈춘다.
 - name: 조인 정보가 없으면 여기서 멈춘다
@@ -174,8 +255,48 @@
         + (['KUBEADM_CA_CERT_HASH'] if kubeadm_ca_cert_hash | length == 0 else [])
       }}
   when:
-    - not _kubelet_conf.stat.exists
+    - not _joined
     - not _join_ready
+
+# ── 3. 재조인 (kubeadm_force_rejoin=true 일 때만) ──────────────
+#
+# **클러스터에서 Node 오브젝트를 지우는 것은 여기서 하지 않는다.** 워커에는
+# admin kubeconfig 가 없어서 할 수 없고, 있어도 워커가 자기를 지우는 것은
+# 권한 경계를 넘는다. `kubectl drain`·`kubectl delete node` 는 사람이
+# 워크스테이션에서 먼저 한다 — 위 실패 메시지와 런북에 순서가 있다.
+
+- name: 조인 흔적을 지운다 (kubeadm reset)
+  ansible.builtin.command: kubeadm reset -f
+  when:
+    - kubeadm_force_rejoin | bool
+    - _joined or _dirty
+  register: _reset
+  changed_when: _reset.rc == 0
+
+# reset 은 CNI 설정을 지우지 않는다. 남겨두면 다음 조인이 이전 클러스터의
+# 파드 CIDR 을 물려받아 "노드는 Ready 인데 파드끼리 안 통하는" 상태가 된다.
+- name: CNI 설정 잔여물을 지운다
+  ansible.builtin.file:
+    path: /etc/cni/net.d
+    state: absent
+  when:
+    - kubeadm_force_rejoin | bool
+    - _joined or _dirty
+
+# iptables 는 건드리지 않는다. `kubeadm reset` 도 안 건드린다고 경고한다.
+# SSH 로 붙어 있는 상태에서 규칙을 밀면 세션이 끊길 수 있고, ufw 규칙까지
+# 같이 날아간다. kube-proxy 잔여 규칙은 **재부팅**으로 지우는 것이 안전하다.
+# VM 을 다시 만드는 경로에서는 애초에 문제가 되지 않는다.
+- name: kube-proxy 잔여 규칙 안내
+  ansible.builtin.debug:
+    msg: >-
+      kubeadm reset 은 iptables 규칙을 지우지 않는다. 이 VM 을 유지한 채
+      재조인했다면 파드 네트워킹이 이상할 때 재부팅을 먼저 시도한다.
+  when:
+    - kubeadm_force_rejoin | bool
+    - _joined or _dirty
+
+# ── 4. 조인 ────────────────────────────────────────────────────
 
 # --node-ip 를 메시 IP 로 준다. LAN 주소로 조인하면 AWS·GCP 에서 이 노드에
 # 못 닿아서 kubectl logs·exec 와 메트릭 수집이 전부 실패한다.
@@ -190,8 +311,8 @@
       - "--node-name={{ inventory_hostname }}"
       - "--node-labels=platform={{ kubeadm_node_labels.platform }},role={{ kubeadm_node_labels.role }}"
   when:
-    - not _kubelet_conf.stat.exists
     - _join_ready
+    - (not _joined) or (kubeadm_force_rejoin | bool)
   no_log: true
   register: _join
   changed_when: _join.rc == 0
@@ -201,11 +322,29 @@
     path: /etc/kubernetes/kubelet.conf
   register: _kubelet_conf_after
 
-- name: kubelet.conf 가 생겼는지 검사한다
+- name: 붙은 엔드포인트를 다시 읽는다
+  ansible.builtin.command:
+    cmd: sed -nE 's#^[[:space:]]*server:[[:space:]]*https?://##p' /etc/kubernetes/kubelet.conf
+  register: _final_server
+  changed_when: false
+  when: _kubelet_conf_after.stat.exists
+
+# 파일 존재만 보지 않는다. 기대한 엔드포인트에 붙었는지까지 본다.
+- name: 의도한 클러스터에 붙었는지 검사한다
   ansible.builtin.assert:
-    that: _kubelet_conf_after.stat.exists
-    fail_msg: "조인이 끝났는데 /etc/kubernetes/kubelet.conf 가 없다."
+    that:
+      - _kubelet_conf_after.stat.exists
+      - (kubeadm_api_endpoint | length == 0)
+        or ((_final_server.stdout | default('') | trim).split('\n') | first == kubeadm_api_endpoint)
+    fail_msg: >-
+      조인이 끝났는데 상태가 기대와 다르다.
+      kubelet.conf 존재={{ _kubelet_conf_after.stat.exists }},
+      엔드포인트={{ (_final_server.stdout | default('(없음)') | trim).split('\n') | first }},
+      기대={{ kubeadm_api_endpoint | default('(미지정)', true) }}.
+      조인 실패 원인은 no_log 로 가려진다 — 워커에서 직접
+      `kubeadm join ... -v=5` 를 돌려 확인한다.
     success_msg: >-
-      조인 완료 — {{ inventory_hostname }}
+      조인 완료 — {{ inventory_hostname }} →
+      {{ (_final_server.stdout | default('') | trim).split('\n') | first }}
       (platform={{ kubeadm_node_labels.platform }}, role={{ kubeadm_node_labels.role }}).
       CNI 가 아직이면 NotReady 가 정상이다.
