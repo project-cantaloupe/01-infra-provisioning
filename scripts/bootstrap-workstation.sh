@@ -114,7 +114,11 @@ install_keyring() {
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
-  curl -fsSL "$url" -o "$tmp" || die "${label} GPG 키를 받지 못했다: ${url}"
+  # --retry 를 붙인다. 이 keyring 이 0바이트로 남은 실제 사고의 원인이
+  # 일시적 TLS 실패였다 (WSL2 에서 흔하다). 한 번 튕기면 저장소는 등록되고
+  # 키는 없는 상태가 되어 이후 모든 apt-get update 가 깨진다.
+  curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused "$url" -o "$tmp" \
+    || die "${label} GPG 키를 받지 못했다: ${url}"
   [[ -s "$tmp" ]] || die "${label} GPG 키가 비어 있다: ${url}"
 
   sudo gpg --batch --yes --dearmor -o "$dest" "$tmp" || die "${label} GPG 키 변환 실패"
@@ -193,6 +197,64 @@ if (( ! DRY_RUN )); then
     sudo -v || die "sudo 를 얻지 못했다."
   fi
 fi
+
+# ── 깨진 apt keyring 을 먼저 잡는다 ─────────────────────────────
+#
+# **저장소 등록과 keyring 은 따로 깨진다.** 키를 받다 실패하면 목적지에
+# 0바이트 파일이 남거나 아예 없는데 sources.list.d 의 항목은 그대로 살아서,
+# 그 뒤 **모든** apt-get update 가 NO_PUBKEY 로 경고하거나 실패한다.
+#
+# 이 스크립트가 실제로 그 상태를 만들었다. kubernetes keyring 이 0바이트로
+# 남았고(2026-07-28, 일시적 TLS 실패), 그것을 고치는 install_keyring 은
+# install_kubectl 안에만 있어서 SKIP_KUBECTL=1 기본값 때문에 호출되지 않았다 —
+# **고치는 코드가 기본값으로 꺼져 있었다.** 그래서 판정을 여기, 모든 설치보다
+# 앞으로 옮긴다.
+#
+# 자동으로 지우지 않는다. sources.list.d 항목을 지우는 것은 이 스크립트가 깔지
+# 않은 것까지 건드릴 수 있고, 무엇을 원하는지(도구를 깔 것인지 저장소를 뺄
+# 것인지)는 사람이 정할 일이다.
+check_apt_keyrings() {
+  step "apt keyring 무결성"
+
+  local broken=() list keyring
+  for list in /etc/apt/sources.list.d/*.list; do
+    [[ -e "$list" ]] || continue
+
+    # signed-by=<경로> 를 뽑는다. 한 파일에 여러 줄이 있을 수 있다.
+    while read -r keyring; do
+      [[ -n "$keyring" ]] || continue
+      if [[ ! -e "$keyring" ]]; then
+        warn "$(basename "$list") → 없는 keyring: ${keyring}"
+        broken+=("$list")
+      elif [[ ! -s "$keyring" ]]; then
+        warn "$(basename "$list") → 0바이트 keyring: ${keyring}"
+        broken+=("$list")
+      fi
+    done < <(sed -nE 's/.*signed-by=([^] ]+).*/\1/p' "$list")
+  done
+
+  if (( ${#broken[@]} )); then
+    die "깨진 apt keyring 이 있다. 이 상태로는 apt-get update 가 서명을 검증하지
+       못한다. 저장소를 빼거나 키를 다시 받아야 한다.
+
+       그 도구를 아직 안 쓴다면 저장소를 뺀다. 예를 들어 kubernetes 는
+       AWS 컨트롤플레인이 서야 쓸 수 있으므로(SKIP_KUBECTL 기본값 1) 지금은
+       빼는 쪽이 맞다.
+         sudo rm -f /etc/apt/sources.list.d/kubernetes.list \\
+                    /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+         sudo apt-get update
+
+       지금 쓴다면 0바이트 keyring 만 지우고 그 도구의 설치를 다시 돌린다.
+       install_keyring 이 0바이트를 감지해 다시 받는다 — 단 해당 도구의
+       설치 함수가 실행될 때만 그 경로가 돈다.
+
+       깨진 목록: ${broken[*]}"
+  fi
+
+  ok "sources.list.d 의 keyring 이 모두 정상"
+}
+
+check_apt_keyrings
 
 APT_UPDATED=0
 apt_update_once() {
