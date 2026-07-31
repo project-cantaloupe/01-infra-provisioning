@@ -143,8 +143,8 @@
       그대로 두면 노드가 낡은 클러스터를 계속 본다. 둘 중 하나를 고른다.
 
         1. VM 을 다시 만든다 (권장 — 가장 깨끗하다)
-             kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data
-             kubectl delete node {{ inventory_hostname }}
+             kubectl drain {{ ansible_facts.hostname }} --ignore-daemonsets --delete-emptydir-data
+             kubectl delete node {{ ansible_facts.hostname }}
              terraform -chdir=terraform/onp destroy -target='proxmox_virtual_environment_vm.worker'
              terraform -chdir=terraform/onp apply
 
@@ -331,7 +331,7 @@
       조인 실패 원인은 no_log 로 가려진다 — 워커에서 직접
       `kubeadm join ... -v=5` 를 돌려 확인한다.
     success_msg: >-
-      조인 완료 — {{ inventory_hostname }} →
+      조인 완료 — {{ ansible_facts.hostname }} →
       {{ (kubeadm_final_server.stdout | default('') | trim).split('\n') | first }}.
       CNI 가 아직이면 NotReady 가 정상이다.
 

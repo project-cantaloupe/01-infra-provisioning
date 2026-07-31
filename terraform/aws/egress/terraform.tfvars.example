@@ -3,5 +3,5 @@ aws_account_id = "123456789012"
 aws_region     = "ap-northeast-2"
 
 # Network 및 Compute state와 동일한 관리 태그 값을 입력.
-owner       = "REPLACE_WITH_TEAM"
-data_class  = "REPLACE_WITH_DATA_CLASS"
+owner       = "team-platform"
+data_class  = "user-audio"

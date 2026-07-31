@@ -60,6 +60,45 @@
 
     # ── 여기부터 규칙. enable 은 맨 마지막이다 ──────────────────
 
+    # UFW 사용자 규칙은 ESTABLISHED 허용보다 뒤에 있어 이미 생긴 UDP 루프를
+    # 차단하지 못한다. before.rules의 conntrack 허용보다 앞에 넣어야 한다.
+    - name: 기존 UFW 사용자 출력 가드를 제거한다
+      community.general.ufw:
+        rule: deny
+        direction: out
+        interface: "{{ security_calico_interface }}"
+        to_ip: "{{ security_calico_pod_cidr }}"
+        to_port: "{{ security_tailscale_udp_port }}"
+        proto: udp
+        delete: true
+      when: security_tailscale_calico_loop_guard | bool
+
+    - name: 기존 UFW 사용자 입력 가드를 제거한다
+      community.general.ufw:
+        rule: deny
+        direction: in
+        interface: "{{ security_calico_interface }}"
+        from_ip: "{{ security_calico_pod_cidr }}"
+        to_port: "{{ security_tailscale_udp_port }}"
+        proto: udp
+        delete: true
+      when: security_tailscale_calico_loop_guard | bool
+
+    # Tailscale이 Calico 터널 IP를 피어의 직접 주소로 선택하면 다음 루프가 생긴다.
+    # tailscale0 → vxlan.calico → tailscale0. Tailscale UDP만 차단하며 일반
+    # Pod 트래픽과 Calico VXLAN(UDP 4789)은 건드리지 않는다.
+    - name: Tailscale-Calico 가드를 UFW conntrack 허용보다 앞에 둔다
+      ansible.builtin.blockinfile:
+        path: /etc/ufw/before.rules
+        marker: "# {mark} CNTLP TAILSCALE CALICO LOOP GUARD"
+        insertbefore: '^-A ufw-before-input -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT$'
+        block: |
+          -A ufw-before-output -o {{ security_calico_interface }} -d {{ security_calico_pod_cidr }} -p udp --dport {{ security_tailscale_udp_port }} -j DROP
+          -A ufw-before-input -i {{ security_calico_interface }} -s {{ security_calico_pod_cidr }} -p udp --dport {{ security_tailscale_udp_port }} -j DROP
+        validate: "iptables-restore --test %s"
+      when: security_tailscale_calico_loop_guard | bool
+      notify: reload ufw
+
     - name: SSH 를 먼저 연다
       community.general.ufw:
         rule: allow
@@ -73,7 +112,7 @@
     - name: Tailscale 직접 연결 포트를 연다
       community.general.ufw:
         rule: allow
-        port: "41641"
+        port: "{{ security_tailscale_udp_port }}"
         proto: udp
 
     # 클러스터 내부 통신(kubelet 10250, NodePort, CNI 오버레이)은 전부 메시를 탄다.
@@ -98,6 +137,44 @@
     - name: ufw 를 켠다
       community.general.ufw:
         state: enabled
+
+    - name: 변경된 UFW 설정을 즉시 반영한다
+      ansible.builtin.meta: flush_handlers
+
+    - name: Tailscale-Calico 영구 가드가 커널에 올라왔는지 확인한다
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - - iptables
+          - -C
+          - ufw-before-output
+          - -o
+          - "{{ security_calico_interface }}"
+          - -d
+          - "{{ security_calico_pod_cidr }}"
+          - -p
+          - udp
+          - --dport
+          - "{{ security_tailscale_udp_port }}"
+          - -j
+          - DROP
+        - - iptables
+          - -C
+          - ufw-before-input
+          - -i
+          - "{{ security_calico_interface }}"
+          - -s
+          - "{{ security_calico_pod_cidr }}"
+          - -p
+          - udp
+          - --dport
+          - "{{ security_tailscale_udp_port }}"
+          - -j
+          - DROP
+      loop_control:
+        label: "{{ item[2] }}"
+      changed_when: false
+      when: security_tailscale_calico_loop_guard | bool
 
     # 켠 다음 SSH 가 살아 있는지 실제로 확인한다.
     # 이 태스크가 도는 것 자체가 SSH 가 살아 있다는 증거지만,

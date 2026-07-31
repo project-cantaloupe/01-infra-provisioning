@@ -20,7 +20,7 @@ terraform -chdir=terraform/aws/database apply
 
 # 2. 별도 명령으로 K8s 클러스터를 구성한다
 cd ansible
-ansible-playbook playbooks/site-cluster.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-cluster.yaml
 ```
 
 Terraform과 Ansible은 서로를 호출하지 않는다. Ansible은 Tailscale 가입,
