@@ -127,8 +127,7 @@
         mode: "0600"
       no_log: true
 
-    # --accept-dns=false 인 이유: MagicDNS 가 /etc/resolv.conf 를 갈아치우면
-    # 클러스터 DNS(CoreDNS)와 충돌한다. 노드는 클러스터 DNS 를 봐야 한다.
+    # --accept-dns 는 tailscale_accept_dns 가 정한다 — defaults/main.yml 참고.
     #
     # --advertise-routes 는 값이 있을 때만 붙인다. 빈 문자열로 넘기면
     # 기존에 광고 중이던 경로를 지워버린다.
@@ -139,7 +138,7 @@
               '--auth-key=file:' ~ tailscale_auth_key_path,
               '--hostname=' ~ tailscale_hostname,
               '--advertise-tags=' ~ tailscale_tags,
-              '--accept-dns=false',
+              '--accept-dns=' ~ (tailscale_accept_dns | bool | lower),
               '--timeout=2m']
              + (['--ssh'] if tailscale_ssh | bool else [])
              + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
@@ -153,6 +152,26 @@
         path: "{{ tailscale_auth_key_path }}"
         state: absent
       no_log: true
+
+# ── 가입 뒤에도 수렴시켜야 하는 설정 ──────────────────────────
+#
+# `tailscale up` 은 미가입일 때만 돈다. 이미 Running 인 노드는 위 블록을
+# 통째로 건너뛰므로, up 의 인자로만 설정하면 **값을 바꿔도 반영되지 않는다.**
+# 플레이북은 성공하고 노드만 옛 설정으로 남는다.
+#
+# `tailscale set` 은 가입 상태와 무관하게 먹으므로 여기서 매번 맞춘다.
+- name: 현재 MagicDNS 설정 조회
+  ansible.builtin.command: tailscale debug prefs
+  register: _ts_prefs
+  changed_when: false
+  check_mode: false
+
+- name: MagicDNS 설정을 맞춘다
+  ansible.builtin.command:
+    cmd: tailscale set --accept-dns={{ tailscale_accept_dns | bool | lower }}
+  when: (_ts_prefs.stdout | from_json).CorpDNS | default(false) | bool
+        != (tailscale_accept_dns | bool)
+  changed_when: true
 
 # ── 결과 검증 ─────────────────────────────────────────────────
 

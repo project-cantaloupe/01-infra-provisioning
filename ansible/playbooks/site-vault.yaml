@@ -50,5 +50,11 @@
         # 인벤토리 group_vars 가 아니라 여기 두는 이유는 이 호스트가
         # role_* 그룹에 안 들어가기 때문이다. component=vault 만 갖는다.
         tailscale_tags: "tag:cntlp-vault"
+
+        # MagicDNS 를 켠다. 롤 기본값이 끔인 이유는 CoreDNS 충돌인데,
+        # 이 노드에는 클러스터 DNS 가 없어서 그 이유가 성립하지 않는다.
+        # 끄면 vault-server 의 seal 상태 검증이 자기 tailnet 이름을 못 풀어
+        # 죽는다 — api_addr 도 TLS 도메인도 그 이름이다.
+        tailscale_accept_dns: true
     - role: vault-server
       tags: [vault]
