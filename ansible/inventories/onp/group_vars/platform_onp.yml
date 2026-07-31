@@ -26,3 +26,11 @@ ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev
 # cloud-init 이 sudo NOPASSWD 로 만들어 뒀다.
 ansible_become: true
 ansible_become_method: sudo
+
+# tailnet 태그 — roles/vpn-mesh/defaults/main.yml 참고. 롤에는 기본값이 없다.
+# 온프렘 호스트는 전부 워커다. 컨트롤플레인은 AWS 에만 있다.
+#
+# **role_* 그룹이 아니라 platform_onp 에 둔다.** Proxmox 태그는 key=value 를
+# 못 써서 role 값이 인벤토리마다 다르게 들어올 수 있는데, 여기서는 어느 role 이든
+# 워커라서 platform 단위로 잡는 편이 덜 깨진다.
+tailscale_tags: "tag:cntlp-wk"

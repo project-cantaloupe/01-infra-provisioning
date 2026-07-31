@@ -88,6 +88,33 @@
       노드용은 ephemeral 로 발급하는 것을 권합니다 — defaults/main.yml 참고.
   when: tailscale_backend_before != 'Running'
 
+# 키와 같은 이유로 여기서 막는다. 태그가 비었거나 tailnet 에 없는 값이면
+# `tailscale up` 이 "requested tags ... are invalid or not permitted" 로 죽는데,
+# 그 출력은 no_log 에 가려서 원인이 안 보인다. 미리 형태만이라도 검사한다.
+#
+# **형태만 본다.** 그 태그가 tailnet 에 실제로 있는지는 여기서 알 수 없다 —
+# 확인하려면 Tailscale API 키가 필요하고, 그건 이 롤이 없애려는 secret-zero 를
+# 하나 늘리는 일이다. 실재 여부는 admin 콘솔의 tagOwners 로 확인한다.
+- name: 미가입 노드에 사용할 tailnet 태그 확인
+  ansible.builtin.assert:
+    that:
+      - tailscale_tags | length > 0
+      - tailscale_tags is match('^tag:[a-z0-9-]+(,tag:[a-z0-9-]+)*$')
+    fail_msg: |
+      tailscale_tags 가 비었거나 형식이 잘못됐습니다: "{{ tailscale_tags }}"
+
+      이 롤은 기본값을 두지 않습니다. 노드 종류마다 태그가 다르고,
+      틀린 태그로 가입하면 노드가 뜬 채 ACL 에 막혀 고립되기 때문입니다.
+
+      호출하는 쪽에서 지정하세요 — 지금 쓰는 값:
+        tag:cntlp-aws-cp   컨트롤플레인
+        tag:cntlp-wk       워커 (aws · gcp · onp)
+        tag:cntlp-vault    Vault
+
+      태그는 Tailscale admin → Access controls 의 tagOwners 에 있어야 하고,
+      인증 키에도 그 태그의 부여 권한이 붙어 있어야 합니다.
+  when: tailscale_backend_before != 'Running'
+
 - name: 미가입 노드를 tailnet 에 등록
   when: tailscale_backend_before != 'Running'
   block:

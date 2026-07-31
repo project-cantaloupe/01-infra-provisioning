@@ -1,2 +1,7 @@
 ---
 kubernetes_node_role: control-plane
+
+# tailnet 태그. ACL 이 이 값으로 접근을 가르므로 노드 종류마다 다르다
+# (roles/vpn-mesh/defaults/main.yml — 롤에는 기본값이 없다).
+# 컨트롤플레인만 platform 토큰을 갖는다. 워커는 aws·gcp·onp 를 한 태그로 묶는다.
+tailscale_tags: "tag:cntlp-aws-cp"

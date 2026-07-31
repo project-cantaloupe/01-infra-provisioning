@@ -42,5 +42,13 @@
       tags: [os, security]
     - role: vpn-mesh
       tags: [mesh]
+      vars:
+        # Vault 는 K8s 노드가 아니므로 워커·컨트롤플레인 태그를 쓰지 않는다.
+        # ACL 이 태그로 접근을 가른다 — tag:cntlp-vault 가 acls 에 없으면
+        # 노드는 뜨는데 아무도 닿지 못하고, 접근 경로가 메시뿐이라 고립된다.
+        #
+        # 인벤토리 group_vars 가 아니라 여기 두는 이유는 이 호스트가
+        # role_* 그룹에 안 들어가기 때문이다. component=vault 만 갖는다.
+        tailscale_tags: "tag:cntlp-vault"
     - role: vault-server
       tags: [vault]

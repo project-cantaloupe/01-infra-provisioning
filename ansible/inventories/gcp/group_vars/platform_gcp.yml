@@ -1,0 +1,11 @@
+---
+# GCP 노드의 그룹 변수 (labels.platform=gcp 가 만드는 platform_gcp 그룹).
+#
+# 이 인벤토리에는 여태 group_vars 가 없었다. 접속 계정·키는 아직
+# 명령줄이나 ~/.ssh/config 에 의존한다 — aws·onp 처럼 여기로 모으는 것은
+# GCP 노드를 실제로 다시 돌릴 때 한다.
+
+# tailnet 태그 — roles/vpn-mesh/defaults/main.yml 참고. 롤에는 기본값이 없다.
+# GCP 호스트는 전부 워커다. 워커는 플랫폼과 무관하게 한 태그를 쓰고,
+# 실행 위치는 platform 라벨이 가른다.
+tailscale_tags: "tag:cntlp-wk"

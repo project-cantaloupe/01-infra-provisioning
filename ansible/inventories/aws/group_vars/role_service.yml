@@ -1,2 +1,7 @@
 ---
 kubernetes_node_role: service
+
+# tailnet 태그 — roles/vpn-mesh/defaults/main.yml 참고. 롤에는 기본값이 없다.
+# 워커는 플랫폼과 무관하게 한 태그를 쓴다. 실행 위치는 태그가 아니라
+# platform 라벨이 가른다 (00-cantaloupe-resources/resource-naming-convention).
+tailscale_tags: "tag:cntlp-wk"
