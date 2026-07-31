@@ -3,17 +3,15 @@
 # 형식은 terraform.tfvars.example 을 본다.
 
 # ── Proxmox 접속 ────────────────────────────────────────────────
-
-variable "proxmox_endpoint" {
-  description = "Proxmox VE API 주소. 예: https://192.168.0.10:8006/"
-  type        = string
-}
-
-variable "proxmox_api_token" {
-  description = "API 토큰. `user@realm!tokenid=uuid` 형식. ansible 인벤토리가 쓰는 것과 같은 토큰이다."
-  type        = string
-  sensitive   = true
-}
+#
+# **proxmox_endpoint 와 proxmox_api_token 은 변수가 아니다.** Vault 의
+# secret/onp/proxmox 에서 온다 — vault.tf.
+#
+# 여기 변수로 남겨두고 tfvars 를 선택지로 두지 않는 이유는, 폴백이 있으면
+# 사람이 결국 쉬운 길로 가기 때문이다. 없애야 없어진다
+# → tasks/doing/006_vault-setup.md 8절
+#
+# 아래 둘은 시크릿이 아니라 접속 방식이라 그대로 변수다.
 
 variable "proxmox_insecure" {
   description = "자체서명 인증서를 허용할지. 홈랩 기본값은 true 다."
@@ -142,10 +140,13 @@ variable "vm_username" {
   default     = "ubuntu"
 }
 
-variable "ssh_public_keys" {
-  description = "위 계정에 넣을 SSH 공개키 목록."
-  type        = list(string)
-}
+# **ssh_public_keys 도 변수가 아니다.** Vault 의 secret/ssh/cntlp-public 에서
+# 온다 — vault.tf 의 local.ssh_public_keys.
+#
+# 공개키는 비밀이 아닌데 왜 Vault 에 두느냐 — 배포 대상을 한 곳에서 갈아끼우기
+# 위해서다. 키를 교체할 때 tfvars·인벤토리·문서에 흩어진 사본을 전부 찾아
+# 고치는 대신 KV 한 경로만 쓴다. 그리고 개인키와 **다른 경로**에 둔 것이
+# terraform-onp 정책이 개인키를 막을 수 있는 이유다 (2절).
 
 # ── 네트워크 ────────────────────────────────────────────────────
 

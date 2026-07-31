@@ -12,5 +12,13 @@ terraform {
       source  = "bpg/proxmox"
       version = "~> 0.111"
     }
+
+    # Proxmox 토큰과 SSH 공개키를 tfvars 가 아니라 Vault 에서 읽는다 — vault.tf.
+    # terraform/vault 스택과 같은 5.10 계열로 맞춘다. 두 스택이 provider 버전을
+    # 따로 올리면 한쪽에서만 재현되는 문제가 생긴다.
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 5.10.0"
+    }
   }
 }

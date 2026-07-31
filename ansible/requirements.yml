@@ -8,3 +8,10 @@ collections:
   # 없으면 "couldn't resolve module/action 'community.general.modprobe'" 로 죽는다.
   - name: community.general
     version: "11.3.0"
+
+  # 온프렘 group_vars 가 tailnet auth key 를 Vault 에서 읽는다
+  # (inventories/onp/group_vars/platform_onp.yml).
+  # 없으면 "lookup plugin (community.hashi_vault.vault_kv2_get) not found" 로
+  # 죽는데, 그 에러는 Vault 쪽 문제로 읽히기 쉽다 — 컬렉션이 없는 것뿐이다.
+  - name: community.hashi_vault
+    version: "6.1.0"

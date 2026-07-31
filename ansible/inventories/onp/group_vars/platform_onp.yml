@@ -13,9 +13,20 @@
 # (terraform/onp/variables.tf). 한쪽만 바꾸면 여기서 끊긴다.
 ansible_user: ubuntu
 
-# 프로젝트 전용 키. GitHub 키와 분리해 둔 것이라 ssh-agent 에 없을 수 있어
-# 파일 경로를 직접 지정한다. 다른 경로에 뒀다면 CNTLP_SSH_KEY 로 덮는다.
-ansible_ssh_private_key_file: "{{ lookup('env', 'CNTLP_SSH_KEY') | default('~/.ssh/cantaloupe_ed25519', true) }}"
+# **개인키 경로를 지정하지 않는다.** ssh-agent 를 쓴다.
+#
+# 예전에는 ansible_ssh_private_key_file 로 ~/.ssh/cantaloupe_ed25519 를
+# 가리켰다. 그 파일은 이제 없어도 된다 — scripts/cntlp-env.sh 가 Vault 의
+# secret/ssh/cntlp-private 를 파이프로 받아 `ssh-add -t 8h` 로 agent 메모리에만
+# 넣는다. 디스크를 거치지 않는다.
+#
+# 파일 경로로 되돌리지 않는다. Vault 에서 당겨 파일로 쓰면 원본이 그대로 있는
+# 상태에서 평문 사본이 하나 더 생긴다 — 시크릿을 한 곳으로 모으는 작업이
+# 사본을 늘리는 꼴이다 → tasks/doing/006_vault-setup.md 4절
+#
+# agent 에 키가 없으면 "Permission denied (publickey)" 로 죽는다. 그때는
+# source scripts/cntlp-env.sh 를 다시 부른다 (토큰 TTL 8h 와 같은 수명이라
+# 한쪽이 만료되면 대개 다른 쪽도 만료돼 있다).
 
 # 워커는 cloud image 로 갓 만들어져 known_hosts 에 없다. VM 을 다시 만들면
 # 호스트 키가 바뀌어 또 막힌다. 홈랩 사설망이라 검사를 끈다 —
@@ -34,3 +45,20 @@ ansible_become_method: sudo
 # 못 써서 role 값이 인벤토리마다 다르게 들어올 수 있는데, 여기서는 어느 role 이든
 # 워커라서 platform 단위로 잡는 편이 덜 깨진다.
 tailscale_tags: "tag:cntlp-wk"
+
+# tailnet auth key 를 Vault 에서 읽는다. 롤 기본값(환경변수
+# CNTLP_TAILSCALE_AUTH_KEY)을 여기서 덮는다.
+#
+# **폴백이 없다.** Vault 가 안 닿으면 lookup 이 에러로 죽는다. 환경변수로
+# 조용히 돌아가지 않는다 → tasks/doing/006_vault-setup.md 8절
+#
+# 값은 필요할 때만 읽힌다. jinja 는 게으르게 평가되고, 롤에서 이 변수를 쓰는
+# 태스크는 전부 `when: tailscale_backend_before != 'Running'` 아래에 있다.
+# 그래서 이미 가입된 노드에 플레이북을 다시 돌릴 때는 Vault 가 필요 없다.
+#
+# 인증은 VAULT_ADDR / VAULT_TOKEN 환경변수로 간다 — scripts/cntlp-env.sh 가
+# 세운다. 사람 토큰이든 ansible-onp AppRole 토큰이든 이 경로는 읽을 수 있다.
+#
+# no_log 는 롤이 이미 걸어 뒀다. 값은 -vvv 에도 안 찍힌다.
+tailscale_auth_key: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get', 'onp/tailscale').secret.auth_key }}
