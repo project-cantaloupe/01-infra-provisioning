@@ -24,8 +24,9 @@ tailscale_auth_key: >-
 tailscale_auth_key_path: /run/cntlp-tailscale-auth-key
 tailscale_hostname: "{{ ansible_facts.hostname }}"
 
-# 노드에 붙일 tailnet 태그. ACL 이 이걸로 사람과 서버를 가른다.
-tailscale_tags: "tag:k8s-node"
+# 노드에 붙일 tailnet 태그. Worker는 플랫폼과 무관하게 같은 태그를 사용한다.
+# AWS Control Plane은 inventories/aws/group_vars/role_control_plane.yml에서 덮어쓴다.
+tailscale_tags: "tag:cntlp-wk"
 
 # 서브넷 라우터로 광고할 대역. 단일 클러스터라 노드 IP 도달성만으로는 부족하고
 # 파드 CIDR 까지 라우팅돼야 한다 (decisions/20260728_network-connectivity-and-access).
@@ -34,5 +35,5 @@ tailscale_tags: "tag:k8s-node"
 # 값이 정해지면 여기 넣고 롤을 다시 돌린다.
 tailscale_advertise_routes: []
 
-# SSH 를 tailnet 으로도 받을지. 사설망에서 이미 SSH 가 되므로 기본은 끔.
-tailscale_ssh: false
+# Tailnet 정책에서 허용한 사용자만 Tailscale SSH로 접속한다.
+tailscale_ssh: true

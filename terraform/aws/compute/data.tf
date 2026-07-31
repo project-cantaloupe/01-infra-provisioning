@@ -26,7 +26,7 @@ data "aws_ami" "ubuntu" {
     ]
   }
 
-  # t3.small에서 사용할 x86_64 아키텍처
+  # Control Plane과 Worker가 공통으로 사용하는 x86_64 아키텍처
   filter {
     name   = "architecture"
     values = ["x86_64"]

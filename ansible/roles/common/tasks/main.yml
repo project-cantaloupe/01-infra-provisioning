@@ -66,9 +66,31 @@
     replace: '# \1'
     backup: true
 
+- name: 설치된 시간 동기화 서비스를 찾는다
+  ansible.builtin.service_facts:
+
+- name: 사용할 시간 동기화 서비스를 정한다
+  ansible.builtin.set_fact:
+    common_time_sync_service: >-
+      {{
+        'systemd-timesyncd.service'
+        if 'systemd-timesyncd.service' in ansible_facts.services
+        else (
+          'chrony.service'
+          if 'chrony.service' in ansible_facts.services
+          else ''
+        )
+      }}
+
+- name: 지원하는 시간 동기화 서비스가 있는지 확인한다
+  ansible.builtin.assert:
+    that:
+      - common_time_sync_service | length > 0
+    fail_msg: systemd-timesyncd 또는 chrony 서비스가 필요합니다.
+
 - name: 시간 동기화를 켠다
   ansible.builtin.systemd:
-    name: systemd-timesyncd
+    name: "{{ common_time_sync_service }}"
     enabled: true
     state: started
 

@@ -8,6 +8,12 @@ filters:
   # 다른 프로젝트나 플랫폼의 EC2가 섞이지 않도록 필수 태그로 제한한다.
   "tag:org": cntlp
   "tag:platform": aws
+  # Kubernetes 노드만 포함한다. 역할 태그가 없는 Vault 등은 제외한다.
+  "tag:role":
+    - control-plane
+    - service
+    # 현재 state의 기존 Worker가 Terraform 태그 정리 전에도 빠지지 않게 한다.
+    - worker
 # EICE 터널은 사설 IP 대신 EC2 인스턴스 ID를 대상으로 연다.
 hostnames:
   - instance-id
