@@ -28,7 +28,7 @@
 #
 # 토큰이 안 들어가도 state 에는 여전히 인프라 구조가 통째로 담긴다.
 # 상태는 cntlp-aws-tfstate 에 있고 그 버킷의 기본 암호화는 aws:kms 다
-# (alias/cntlp-aws-tfstate) → docs/06_tfstate.md
+# (alias/cntlp-aws-tfstate) → references/20260801_infra-06-tfstate.md
 #
 # ── 폴백이 없다 ─────────────────────────────────────────────────
 #

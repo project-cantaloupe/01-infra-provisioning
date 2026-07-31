@@ -11,7 +11,7 @@ terraform {
     # aws:kms 여도 소용없다 — S3 백엔드가 PUT 마다 암호화 방식을 명시해서
     # 보내므로 명시값이 버킷 기본값을 이긴다. 이 줄이 없으면 terraform 이
     # 쓸 때마다 상태 객체가 조용히 AES256 으로 되돌아간다.
-    # → docs/06_tfstate.md, findings/20260731_tfstate-sse-silent-downgrade.md
+    # → references/20260801_infra-06-tfstate.md, findings/20260731_tfstate-sse-silent-downgrade.md
     kms_key_id = "alias/cntlp-aws-tfstate"
     # 동시에 여러 명이 같은 상태를 변경하지 못하도록 S3 잠금 파일을 사용한다.
     use_lockfile = true

@@ -4,12 +4,12 @@
 
 ## 실행 순서
 
-**전문은 [docs/02_build-order.md](docs/02_build-order.md) 에 있다.**
+**전문은 워크스페이스의 `references/20260801_infra-02-build-order.md` 에 있다.**
 각 단계가 왜 그 순서인지, 어기면 어떤 증상이 나오는지까지 적혀 있다.
 아래는 요약이다.
 
 ```bash
-# 0. 상태 버킷과 KMS 키는 terraform 밖에서 손으로 만든다 (docs/06_tfstate.md)
+# 0. 상태 버킷과 KMS 키는 terraform 밖에서 손으로 만든다 (references/20260801_infra-06-tfstate.md)
 
 # 1. AWS 기반
 terraform -chdir=terraform/aws/network apply
@@ -20,7 +20,7 @@ terraform -chdir=terraform/aws/vault apply
 cd ansible && ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-vault.yaml
 vault operator init -recovery-shares=5 -recovery-threshold=3    # 사람만. 봉투에 봉인
 terraform -chdir=terraform/vault apply                          # 정책·AppRole
-#   → 시크릿 4개 투입도 사람이 한다 (docs/04_secrets.md)
+#   → 시크릿 4개 투입도 사람이 한다 (references/20260801_infra-04-secrets.md)
 
 # 3. 노드 VM. 셋은 서로 독립이다
 source scripts/cntlp-env.sh                       # rc=0 이어야 한다
@@ -53,24 +53,31 @@ Terraform과 Ansible은 서로를 호출하지 않는다. Ansible은 Tailscale �
 Argo CD 설치와 최초 Root Application 등록은 클러스터 구성 뒤 별도
 부트스트랩 단계에서 수행한다. 이 저장소의 Ansible은 애플리케이션을 배포하지 않는다.
 
-## 문서
+## 문서는 워크스페이스에 있다
 
-**[`docs/`](docs/README.md) 가 색인이다. 파일 이름의 번호가 읽는 순서다.**
+**절차 문서는 이 리포에 두지 않는다.** 워크스페이스의 `references/` 가 갖는다.
+색인은 `references/20260801_infra-00-index.md` 이고, 슬러그의 번호가 읽는
+순서다.
 
-| # | 문서 | 언제 편다 |
+| # | 슬러그 | 언제 편다 |
 |---|---|---|
-| 01 | [아키텍처](docs/01_architecture.md) | 왜 이 모양인지. **처음 온 사람이 먼저 읽는다** |
-| 02 | [구축 순서](docs/02_build-order.md) | 아무것도 없는 상태에서 전부 세울 때 |
-| 03 | [합류와 연동](docs/03_onboarding.md) | 새 팀원이 붙어서 자기 파트를 시작할 때 |
-| 04 | [시크릿](docs/04_secrets.md) | 비밀 값을 새로 넣거나 바꿀 때 |
-| 05 | [Vault 운영](docs/05_vault-ops.md) | 백업·복구·인스턴스 재생성 |
-| 06 | [tfstate](docs/06_tfstate.md) | 상태 버킷·암호화 키를 만들거나 고칠 때 |
-| 07 | [온프렘 VM](docs/07_onp-vm-recreate.md) | Proxmox 워커를 지우고 다시 만들 때 |
+| 01 | `infra-01-architecture` | 왜 이 모양인지. **처음 온 사람이 먼저 읽는다** |
+| 02 | `infra-02-build-order` | 아무것도 없는 상태에서 전부 세울 때 |
+| 03 | `infra-03-onboarding` | 새 팀원이 붙어서 자기 파트를 시작할 때 |
+| 04 | `infra-04-secrets` | 비밀 값을 새로 넣거나 바꿀 때 |
+| 05 | `infra-05-vault-ops` | 백업·복구·인스턴스 재생성 |
+| 06 | `infra-06-tfstate` | 상태 버킷·암호화 키를 만들거나 고칠 때 |
+| 07 | `infra-07-onp-vm-recreate` | Proxmox 워커를 지우고 다시 만들 때 |
 
-디렉터리를 고칠 때 보는 것은 따로다 —
-[`terraform/onp/README.md`](terraform/onp/README.md) (Proxmox 사전 설정),
-[`terraform/vault/README.md`](terraform/vault/README.md) (정책·AppRole),
-[`ansible/README.md`](ansible/README.md) (준비와 단계별 실행).
+전부 `references/20260801_<슬러그>.md` 다. 코드 주석의
+`→ references/…` 도 같은 곳을 가리킨다.
+
+**리포에 남는 문서는 넷뿐이다.** 그 디렉터리를 고칠 때 같이 보는 것이라
+코드 옆에 둔다 — [`terraform/onp/README.md`](terraform/onp/README.md)
+(Proxmox 사전 설정), [`terraform/vault/README.md`](terraform/vault/README.md)
+(정책·AppRole), [`ansible/README.md`](ansible/README.md) (준비와 단계별 실행),
+[`ansible/roles/vault-server/README.md`](ansible/roles/vault-server/README.md)
+(설치 롤).
 
 ## 구조
 
@@ -124,7 +131,7 @@ AWS·GCP의 공통 관리 태그는 `org`, `owner`, `managed-by`, `lifecycle`,
 
 **새 스택을 만들 때 `backend.tf` 에 `kms_key_id` 를 빠뜨리지 않는다.**
 `encrypt = true` 만으로는 SSE-S3 이고, apply 는 성공하므로 아무도 모른다
-→ [docs/06_tfstate.md](docs/06_tfstate.md)
+→ `references/20260801_infra-06-tfstate.md`
 
 ## 클러스터 안쪽 거버넌스는 여기 없다
 

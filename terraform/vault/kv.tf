@@ -30,7 +30,7 @@ resource "vault_kv_secret_backend_v2" "secret" {
 #   vault kv put secret/ssh/cntlp-public  authorized_keys=@~/.ssh/cantaloupe_ed25519.pub
 #   vault kv put secret/ssh/cntlp-private private_key=@~/.ssh/cantaloupe_ed25519
 #
-# 절차 전문은 docs/04_secrets.md 를 본다.
+# 절차 전문은 references/20260801_infra-04-secrets.md 를 본다.
 #
 # **공개키와 개인키가 다른 경로인 것이 정책 설계의 전제다.** KV v2 에 필드 단위
 # ACL 이 없어서, 한 경로에 뭉치면 공개키를 읽는 주체가 개인키까지 읽는다.

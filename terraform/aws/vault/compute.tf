@@ -30,7 +30,7 @@ resource "aws_security_group" "vault" {
 
   # EICE가 켜져 있을 때만 SSH ingress를 만든다.
   # EICE는 lifecycle=temporary 자원이다. 지운 뒤 Vault를 다시 세우려면
-  # 한시적으로 다시 켜야 한다 — docs/05_vault-ops.md
+  # 한시적으로 다시 켜야 한다 — references/20260801_infra-05-vault-ops.md
   dynamic "ingress" {
     for_each = toset(data.aws_security_groups.eice.ids)
 
@@ -91,7 +91,7 @@ resource "aws_instance" "vault" {
   # user_data가 바뀌면 설정이 일부만 적용된 EC2를 남기지 않고 교체한다.
   #
   # **교체는 raft 데이터를 지운다.** 바꾸기 전에 스냅샷을 뜬다 —
-  # docs/05_vault-ops.md 의 재생성 절차.
+  # references/20260801_infra-05-vault-ops.md 의 재생성 절차.
   user_data_replace_on_change = true
 
   root_block_device {

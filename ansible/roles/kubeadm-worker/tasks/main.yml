@@ -152,7 +152,7 @@
              먼저 위 drain·delete 로 클러스터에서 노드를 지운 뒤:
              ansible-playbook playbooks/site-workers.yaml --tags join -e kubeadm_force_rejoin=true
 
-      docs/07_onp-vm-recreate.md 를 본다.
+      references/20260801_infra-07-onp-vm-recreate.md 를 본다.
   when:
     - kubeadm_joined
     - not kubeadm_endpoint_matches

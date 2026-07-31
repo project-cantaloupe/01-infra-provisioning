@@ -30,7 +30,7 @@
 #     -e vault_awskms_key_id=$(terraform -chdir=../terraform/aws/vault output -raw vault_kms_key_id)
 #
 # 이 플레이북은 Vault 를 **초기화하지 않는다.** `vault operator init` 은 사람이
-# 한다 — docs/05_vault-ops.md
+# 한다 — references/20260801_infra-05-vault-ops.md
 - name: Vault 서버 구성
   hosts: component_vault
   become: true

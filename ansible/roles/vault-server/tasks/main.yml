@@ -313,5 +313,5 @@
       {% if not (_seal.json.initialized | default(false)) %}
       **아직 초기화되지 않았다.** `vault operator init` 은 사람이 한다 —
       recovery key 를 받아 오프라인에 봉인해야 하므로 자동화하지 않는다.
-      docs/05_vault-ops.md 를 본다.
+      references/20260801_infra-05-vault-ops.md 를 본다.
       {% endif %}

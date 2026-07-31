@@ -10,7 +10,7 @@
 # 권한을 가져서 부팅하면 스스로 unseal한다.
 #
 # **이 키를 잃으면 Vault 데이터를 잃는다.** 삭제 대기 기간을 최대로 두고,
-# recovery key는 오프라인에 봉인한다 — docs/05_vault-ops.md
+# recovery key는 오프라인에 봉인한다 — references/20260801_infra-05-vault-ops.md
 resource "aws_kms_key" "unseal" {
   description             = "Vault auto-unseal for ${local.vault_name}"
   deletion_window_in_days = var.kms_deletion_window_days

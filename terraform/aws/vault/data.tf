@@ -23,7 +23,7 @@ data "terraform_remote_state" "network" {
 # egress는 비용을 아끼려고 destroy하도록 설계된 스택이다
 # (NAT Gateway는 시간당 과금 + 데이터 처리 요금). 그래서 그 destroy가
 # Vault를 고립시킨다는 사실을 여기서 코드로 드러낸다.
-# 순서와 복구 절차는 docs/05_vault-ops.md 가 갖는다.
+# 순서와 복구 절차는 references/20260801_infra-05-vault-ops.md 가 갖는다.
 data "terraform_remote_state" "egress" {
   backend = "s3"
 
