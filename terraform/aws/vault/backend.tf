@@ -1,5 +1,5 @@
 # Vault 상태를 다른 스택과 분리하여 S3에 저장한다.
-# 버킷은 terraform init 전에 별도로 생성되어 있어야 한다.
+# 버킷은 terraform init 전에 별도로 생성되어 있어야 한다 — docs/runbook-tfstate.md
 #
 # **이 상태에는 시크릿이 들어가지 않는다.** Vault 안의 값은 이 스택이 만들지
 # 않고, KMS 키와 버킷 이름 같은 식별자만 담는다.

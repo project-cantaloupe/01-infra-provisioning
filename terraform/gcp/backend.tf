@@ -1,5 +1,7 @@
 # 상태를 로컬에 두지 않는다.
 #
+# 버킷과 암호화 키는 terraform 밖에서 손으로 만든다 — docs/runbook-tfstate.md
+#
 # 버킷 이름이 cntlp-tfstate 에서 cntlp-aws-tfstate 로 바뀌었다.
 # 이유는 terraform/onp/backend.tf 의 주석에 있다 — 버킷 하나로 모은다.
 #

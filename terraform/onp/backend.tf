@@ -1,5 +1,7 @@
 # 상태를 로컬에 두지 않는다.
 #
+# 버킷과 암호화 키는 terraform 밖에서 손으로 만든다 — docs/runbook-tfstate.md
+#
 # 버킷 이름이 cntlp-tfstate 에서 cntlp-aws-tfstate 로 바뀌었다.
 # 한때 버킷이 둘이었다 — AWS 스택 넷은 cntlp-aws-tfstate 를, gcp·onp 는
 # cntlp-tfstate 를 썼다. 상태 저장소가 갈리면 "이 스택 상태가 어디 있지"가
