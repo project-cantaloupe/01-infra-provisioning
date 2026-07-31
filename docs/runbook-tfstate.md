@@ -101,8 +101,12 @@ aws s3api put-bucket-encryption --bucket "$BUCKET" \
 ## 4. 기본 암호화를 바꾼 뒤 기존 객체를 옮긴다
 
 **`put-bucket-encryption` 은 새 객체에만 적용된다.** 이미 있는 상태 파일은
-옛 암호화 그대로 남고, 다음 `apply` 로 그 스택이 다시 쓰일 때까지 바뀌지 않는다.
+옛 암호화 그대로 남는다.
 확인 없이 넘어가면 "버킷은 aws:kms 인데 정작 상태는 AES256" 인 채로 몇 달이 간다.
+
+> **2026-07-31 정정.** 이 문단은 한때 "다음 `apply` 로 그 스택이 다시 쓰일 때까지
+> 바뀌지 않는다" 고 적혀 있었다. **틀렸다. 다음 apply 가 오히려 되돌린다.**
+> 아래 5절이 이유이고, 제자리 복사만으로는 고쳐지지 않는다.
 
 ```bash
 BUCKET=cntlp-aws-tfstate
@@ -140,7 +144,52 @@ apply 중이면 경합한다.
 상태가 남아 있다. 지우려면 lifecycle 규칙으로 noncurrent 버전을 만료시킨다 —
 다만 그것은 되돌릴 수단을 버리는 것이기도 하다. 지금은 두기로 했다.
 
-## 5. 버킷이 하나인 이유
+## 5. `backend.tf` 에 `kms_key_id` 가 없으면 전부 되돌아간다
+
+**버킷 기본 암호화만으로는 부족하다.** 이것이 4절을 무력화하는 지점이고,
+2026-07-31 에 실제로 그 상태였다.
+
+S3 백엔드는 상태를 PUT 할 때 **암호화 방식을 요청 헤더에 명시해서** 보낸다.
+`encrypt = true` 만 주면 그 헤더는 `AES256`(SSE-S3) 이다. 명시값은 버킷 기본값을
+이기므로, 버킷이 `aws:kms` 여도 terraform 이 쓸 때마다 객체가 SSE-S3 로
+되돌아간다. 4절의 제자리 복사는 그때까지만 유효하다.
+
+```hcl
+terraform {
+  backend "s3" {
+    ...
+    encrypt    = true
+    kms_key_id = "alias/cntlp-aws-tfstate"   # 이 줄이 없으면 AES256 이다
+  }
+}
+```
+
+**조용히 일어난다.** apply 는 성공하고, 버킷 설정을 봐도 `aws:kms` 이고,
+객체를 하나하나 `head-object` 로 봐야만 드러난다. 발견 당시 여섯 스택 중
+셋이 이미 되돌아가 있었다 → `findings/20260731_tfstate-sse-silent-downgrade.md`
+
+고친 뒤에는 백엔드 설정이 바뀐 것이므로 재초기화가 필요하다.
+
+```bash
+terraform -chdir=terraform/<스택> init -reconfigure
+```
+
+디렉터리에 옛 로컬 `terraform.tfstate` 가 남아 있으면 `-reconfigure` 가
+"상태를 옮길까" 를 물으며 멈춘다. **S3 쪽이 최신인지 먼저 확인하고** 로컬
+사본을 치운 뒤 다시 돌린다.
+
+확인은 이 한 줄이다. 전부 `aws:kms` 여야 한다.
+
+```bash
+aws s3api list-objects-v2 --bucket cntlp-aws-tfstate --query 'Contents[].Key' --output text \
+| tr '\t' '\n' | while read -r k; do
+    printf '%-40s %s\n' "$k" \
+      "$(aws s3api head-object --bucket cntlp-aws-tfstate --key "$k" \
+         --query '[ServerSideEncryption,SSEKMSKeyId]' --output text)"
+  done
+```
+
+## 6. 버킷이 하나인 이유
 
 한때 둘이었다.
 
@@ -158,7 +207,7 @@ apply 중이면 경합한다.
 버킷 자체는 AWS 자원이다. 안에 무엇이 담겼는지는 `key` 가 가른다 —
 `onp/`, `gcp/`, `aws/vault/`.
 
-## 6. 남은 것
+## 7. 남은 것
 
 - **키 정책이 기본값이다.** 계정 root 에 전권을 주고 나머지는 IAM 에 위임한다.
   주체가 워크스테이션 하나뿐인 지금은 이걸로 충분하다. CI 나 다른 사람이

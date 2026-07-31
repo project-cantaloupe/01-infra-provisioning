@@ -15,6 +15,12 @@ terraform {
     key     = "gcp/terraform.tfstate"
     region  = "ap-northeast-2"
     encrypt = true
+    # **encrypt = true 만으로는 SSE-S3(AES256) 다.** 버킷 기본 암호화가
+    # aws:kms 여도 소용없다 — S3 백엔드가 PUT 마다 암호화 방식을 명시해서
+    # 보내므로 명시값이 버킷 기본값을 이긴다. 이 줄이 없으면 terraform 이
+    # 쓸 때마다 상태 객체가 조용히 AES256 으로 되돌아간다.
+    # → docs/runbook-tfstate.md, findings/20260731_tfstate-sse-silent-downgrade.md
+    kms_key_id = "alias/cntlp-aws-tfstate"
 
     # 스택들이 같은 버킷을 쓴다. 키는 갈라져 있어 스택 간 충돌은 없지만
     # 같은 스택을 두 사람이 동시에 만지는 것은 락으로만 막힌다.
