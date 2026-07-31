@@ -10,7 +10,27 @@
 # provider 블록에 auth_login_approle 을 박지 않는 이유는 secret_id 를 변수로
 # 받아야 하기 때문이다. 변수로 받으면 그 값이 tfvars 나 명령행에 남는데,
 # 지금 없애려는 것이 바로 그것이다. 토큰 발급은 셸에서 하고 결과만 넘긴다.
-provider "vault" {}
+provider "vault" {
+  # **자식 토큰을 만들지 않는다.**
+  #
+  # provider 는 기본적으로 실행마다 auth/token/create 로 짧은 수명의 자식
+  # 토큰을 발급해 쓰고 끝나면 폐기한다. 이 프로젝트의 정책에는 그 권한이
+  # 없어서 plan 이 이렇게 죽는다:
+  #
+  #   Error: Error Configuring Resource Client
+  #   failed to create limited child token: ... Code: 403 permission denied
+  #
+  # 권한을 주는 대신 기능을 끈다. 자식 토큰은 부모 정책을 넘지 못하므로
+  # auth/token/create 가 권한 상승은 아니지만, 정책을 넓히지 않고 끝나는
+  # 길이 있으면 그쪽이 낫다 — terraform-onp 정책이 좁다는 것 자체가
+  # 이 설계의 주장이다 (006 2절).
+  #
+  # 잃는 것은 "20분짜리 토큰으로 좁히기" 다. 여기 오는 토큰은 이미 짧고
+  # 좁다 — 사람 8h, AppRole 1h. 그리고 자식 토큰을 안 만들면 provider 가
+  # 토큰 수명에 손대지 않으므로, 사람이 로그인한 세션이 terraform 실행
+  # 끝에 끊기지도 않는다.
+  skip_child_token = true
+}
 
 provider "proxmox" {
   # tfvars 가 아니라 Vault 에서 온다 — vault.tf
