@@ -179,19 +179,25 @@ _cntlp_env() {
 
   export VAULT_ADDR="${VAULT_ADDR:-$CNTLP_VAULT_ADDR}"
 
-  if [[ -z "${VAULT_TOKEN:-}" ]]; then
-    echo "VAULT_TOKEN 이 없다. 온프렘 값을 세우지 못했다. 먼저 로그인한다:" >&2
+  # **토큰이 있는지를 환경변수로 판단하지 않는다.**
+  #
+  # `vault login` 은 VAULT_TOKEN 을 export 하지 않는다 — 토큰 헬퍼
+  # (~/.vault-token, 0600) 에 저장할 뿐이다. 환경변수만 보면 정상적으로
+  # 로그인한 셸을 "토큰 없음" 으로 판단해서 PROXMOX_* 를 지워버린다.
+  #
+  # 그러면 ansible 인벤토리가 빈 URL 로 붙으려다 이렇게 죽는데, 원인이
+  # 전혀 안 드러난다:
+  #
+  #   Invalid URL '/api2/json/nodes': No scheme supplied.
+  #
+  # terraform 의 vault provider 도 ansible 의 community.hashi_vault 도 둘 다
+  # 헬퍼 파일을 폴백으로 읽는다. 그래서 여기서도 "값이 있나" 가 아니라
+  # **"실제로 되나"** 를 본다. 만료·폐기도 같은 검사로 걸린다.
+  if ! vault token lookup >/dev/null 2>&1; then
+    echo "Vault 토큰이 없거나 유효하지 않다 (만료·폐기 포함)." >&2
     echo "  export VAULT_ADDR=$VAULT_ADDR" >&2
     echo "  vault login -method=userpass username=pneuma" >&2
-    _cntlp_env_clear_onp
-    return 1
-  fi
-
-  # 만료된 토큰을 여기서 가른다. 이걸 안 하면 아래 kv get 이 403 으로 죽는데,
-  # 그 에러는 "정책이 잘못됐나" 로 읽혀서 원인이 만료라는 게 드러나지 않는다.
-  if ! vault token lookup >/dev/null 2>&1; then
-    echo "VAULT_TOKEN 이 유효하지 않다 (만료됐거나 폐기됐다)." >&2
-    echo "  vault login -method=userpass username=pneuma" >&2
+    echo "  (VAULT_TOKEN 을 직접 export 해도 된다 — 둘 다 인식한다)" >&2
     _cntlp_env_clear_onp
     return 1
   fi
