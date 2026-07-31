@@ -226,7 +226,7 @@
 
       Tailscale admin 콘솔에서 오프라인 디바이스 `{{ tailscale_hostname }}` 를
       지운 뒤 이 롤을 다시 돌린다. 반복될 일이면 auth key 를 ephemeral 로
-      발급한다 — docs/runbook-onp-vm-recreate.md 참고.
+      발급한다 — docs/07_onp-vm-recreate.md 참고.
     success_msg: "tailnet 이름 확인 — {{ tailscale_registered_name }}"
 
 # kubeadm join/init 이 이 주소를 --node-ip 로 쓴다. 영역 간 통신이 메시를 타야

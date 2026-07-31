@@ -13,7 +13,7 @@ export VAULT_TOKEN="<초기 root 토큰>"
 vault status        # Sealed=false, Initialized=true
 ```
 
-순서는 `docs/runbook-vault.md` 가 갖는다.
+순서는 `docs/05_vault-ops.md` 가 갖는다.
 
 ## 순환을 어떻게 끊는가
 

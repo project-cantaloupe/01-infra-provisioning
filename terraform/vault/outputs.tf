@@ -50,6 +50,6 @@ output "next_steps" {
          VAULT_TOKEN=$TOKEN vault kv get secret/onp/proxmox          # 성공해야 한다
          VAULT_TOKEN=$TOKEN vault kv get secret/ssh/cntlp-private    # 403 이어야 한다
 
-    자세한 절차는 docs/runbook-vault.md 를 본다.
+    자세한 절차는 docs/05_vault-ops.md 를 본다.
   EOT
 }

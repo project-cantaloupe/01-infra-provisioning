@@ -84,7 +84,7 @@ AWS 자격증명, `ANSIBLE_CONFIG`.
 **Tailscale auth key 를 손으로 넘기지 않는다.** 온프렘은 group_vars 가 Vault 의
 `secret/onp/tailscale` 에서 읽고, 이미 가입된 노드는 그 조회조차 하지 않는다
 (jinja 지연 평가). 새 영역을 처음 세울 때만 예외적으로 환경변수를 쓴다 —
-그 시점에는 Vault 가 아직 없다 → `docs/runbook-build-order.md` 3-2절
+그 시점에는 Vault 가 아직 없다 → `docs/02_build-order.md` 3-2절
 
 **개인키 경로도 지정하지 않는다.** `ansible_ssh_private_key_file` 은
 group_vars 에서 지웠다. ssh-agent 를 쓴다 — Vault 에서 당겨 파일로 쓰면

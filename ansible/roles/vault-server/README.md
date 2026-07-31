@@ -14,7 +14,7 @@ Vault 서버를 설치하고 **초기화되지 않은 상태로** 세운다.
 
 - **`vault operator init`.** recovery key 를 사람이 받아 오프라인에 봉인해야
   한다. 자동화하면 그 값이 ansible 로그나 파일에 남는다 — 이 롤이 없애려는
-  문제를 이 롤이 만드는 셈이다. → `docs/runbook-vault.md`
+  문제를 이 롤이 만드는 셈이다. → `docs/05_vault-ops.md`
 - **정책·auth·KV mount.** `terraform/vault/` 스택이 소유한다
 - **tailnet 조인.** `vpn-mesh` 롤이 앞에서 한다. 이 롤은 결과만 읽는다
 - **시크릿 투입.** 사람이 `vault` CLI 로 한다. terraform 이 하면 값이

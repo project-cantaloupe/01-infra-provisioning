@@ -28,13 +28,13 @@
 #
 # 토큰이 안 들어가도 state 에는 여전히 인프라 구조가 통째로 담긴다.
 # 상태는 cntlp-aws-tfstate 에 있고 그 버킷의 기본 암호화는 aws:kms 다
-# (alias/cntlp-aws-tfstate) → docs/runbook-tfstate.md
+# (alias/cntlp-aws-tfstate) → docs/06_tfstate.md
 #
 # ── 폴백이 없다 ─────────────────────────────────────────────────
 #
 # Vault 가 안 닿으면 plan 이 그냥 죽는다. tfvars 로 조용히 돌아가지 않는다.
 # 폴백을 남기면 사람은 결국 쉬운 길로 가고, 이 작업이 없애려는 상태가
-# 그대로 남는다 → tasks/doing/006_vault-setup.md 8절
+# 그대로 남는다 → tasks/done/006_vault-setup.md 8절
 
 ephemeral "vault_kv_secret_v2" "proxmox" {
   mount = "secret"

@@ -26,7 +26,7 @@ pveum user token add terraform@pve provisioning --privsep 0
 
 출력된 `full-tokenid` 와 `value` 를 `user@realm!tokenid=uuid` 형식으로 합쳐
 **Vault 에 넣는다. `terraform.tfvars` 에 넣지 않는다** (2026-07-31 변경 —
-`tasks/doing/006_vault-setup.md`).
+`tasks/done/006_vault-setup.md`).
 
 ```bash
 vault kv put secret/onp/proxmox \
