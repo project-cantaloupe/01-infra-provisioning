@@ -34,8 +34,8 @@ output "next_steps" {
     3. 시크릿 4개 투입
          vault kv put secret/onp/proxmox   api_token=... endpoint=...
          vault kv put secret/onp/tailscale auth_key=...
-         vault kv put secret/ssh/cntlp-public  authorized_keys=@~/.ssh/cntlp_ed25519.pub
-         vault kv put secret/ssh/cntlp-private private_key=@~/.ssh/cntlp_ed25519
+         vault kv put secret/ssh/cntlp-public  authorized_keys=@~/.ssh/cantaloupe_ed25519.pub
+         vault kv put secret/ssh/cntlp-private private_key=@~/.ssh/cantaloupe_ed25519
 
     4. root 토큰을 버리고 사람 계정으로 다시 로그인한다
          unset VAULT_TOKEN
