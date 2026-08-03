@@ -54,6 +54,22 @@ tailscale_tags: ""
 # 거기 적혀 있다.
 tailscale_advertise_routes: []
 
+# tailnet 이 광고하는 서브넷 경로를 **받을지**. 위 광고와 방향이 반대다.
+#
+# **클러스터 노드에서는 반드시 꺼둔다.** 받은 경로는 라우팅 테이블 52 로 들어가고
+# 그 룩업이 `ip rule` 우선순위 **5270** 이다 — Calico 가 쓰는 main(32766)보다
+# 앞이다. 파드 CIDR 이 승인되는 순간 노드가 파드 대역을 tailnet 쪽으로 보내기
+# 시작하고, 그게 곧 Tailscale ↔ Calico VXLAN 재귀 루프다.
+# → findings/20260803_tailscale-calico-vxlan-loop.md
+#
+# **사람 기기는 반대로 켜야 한다.** 워크스테이션에서 파드 IP 로 가려면 경로를
+# 받아야 한다. 그 설정은 이 롤 밖이다 — 노드만 여기서 관리한다.
+#
+# 여태 이 값은 **주석으로만 존재했다.** 롤이 플래그를 안 넘기니 기본값(꺼짐)으로
+# 남을 것이라 적어뒀는데, 실물은 컨트롤플레인·온프렘 워커 모두 켜져 있었다.
+# 누가 손으로 켜면 되돌릴 것이 없었기 때문이다. 그래서 값으로 만들어 수렴시킨다.
+tailscale_accept_routes: false
+
 # SSH 를 tailnet 으로도 받을지. tailnet 정책에서 허용한 사용자만 들어온다.
 tailscale_ssh: true
 
