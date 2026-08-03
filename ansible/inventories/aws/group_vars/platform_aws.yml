@@ -1,3 +1,9 @@
 ---
 # Kubernetes 노드 라벨에 사용하는 실제 물리 플랫폼이다.
 kubernetes_node_platform: aws
+
+# **여기에 tailscale_advertise_routes 를 두면 안 된다.** Vault EC2 도
+# platform=aws 태그를 갖기 때문에 이 그룹에 들어온다 (terraform/aws/vault/
+# compute.tf 의 「role 태그를 붙이지 않는다」 주석). Vault 는 파드 경로가 없어서
+# 광고하면 Tailscale 이 그 노드를 primary 서브넷 라우터로 뽑았을 때 파드
+# 트래픽이 통째로 블랙홀이 된다. 광고는 role_control_plane.yml 에 있다.

@@ -5,3 +5,38 @@ kubernetes_node_role: control-plane
 # (roles/vpn-mesh/defaults/main.yml — 롤에는 기본값이 없다).
 # 컨트롤플레인만 platform 토큰을 갖는다. 워커는 aws·gcp·onp 를 한 태그로 묶는다.
 tailscale_tags: "tag:cntlp-aws-cp"
+
+# ── 서브넷 라우터 ──────────────────────────────────────────────
+#
+# 파드 CIDR 을 tailnet 에 광고한다. **이게 없으면 메시 안에 있어도 파드 IP·
+# ClusterIP 로 못 간다** — 노드 IP 와 6443 만 닿는다. `CONSTRAINTS.md` 는 광고를
+# 전제하는데 코드 어디에도 값이 없어서 여태 한 번도 광고된 적이 없다.
+# → findings/20260803_calico-tailscale-mark-collision.md 「같이 드러난 것」
+#
+# **왜 여기냐** — 다른 후보가 전부 새는 그룹이다.
+#   platform_aws  Vault EC2 가 들어온다. 파드 경로가 없는 노드가 광고하면
+#                 Tailscale 이 그걸 primary 로 뽑았을 때 파드가 블랙홀이다
+#   role_service  세 인벤토리가 다 role_* 그룹을 만들어서 gcp·onp 까지 번진다
+#   role_control_plane  Vault 는 role 태그가 없고(설계상), 컨트롤플레인은
+#                 AWS 에만 있다. 새지 않는 유일한 그룹이다
+#
+# **지금은 라우터가 1대다 = SPOF.** 다만 컨트롤플레인이 이미 1대라
+# (decisions/20260803_control-plane-single-node.md) 새로 생기는 단일 장애점은
+# 아니다. 마스터를 3대로 늘리면 이 그룹이 자연히 3대가 되고 Tailscale 이
+# primary 를 뽑아 failover 한다.
+#
+# **`--accept-routes` 는 클러스터 노드에서 켜지 않는다.** 받은 경로는 라우팅
+# 테이블 52 로 가고 그 룩업이 ip rule 우선순위 5270 이다 — Calico 가 쓰는
+# main(32766)보다 앞이라 파드 경로를 가릴 수 있다. 롤이 이 플래그를 아예
+# 넘기지 않으므로 기본값(꺼짐)으로 남는다.
+#
+# 서비스 대역(10.96.0.0/12)은 넣지 않았다. 동작은 한다 — 라우터 노드의
+# kube-proxy 가 PREROUTING 에서 DNAT 한다 — 하지만 서비스 대역을 메시에
+# 노출할지는 별개 판정이다 → tasks/todo/005_network-followups.md
+#
+# 값은 vars/cluster.yml 의 kubernetes_pod_cidr 를 따라간다. 여기 숫자를 또
+# 적으면 한쪽만 바꿨을 때 광고 대역과 실제 파드 대역이 어긋난다.
+# vpn-mesh 를 돌리는 플레이 셋(site-prerequisites·site-control-plane·
+# site-workers)이 전부 그 vars_files 를 싣는다.
+tailscale_advertise_routes:
+  - "{{ kubernetes_pod_cidr }}"

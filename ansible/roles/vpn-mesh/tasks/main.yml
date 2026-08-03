@@ -173,6 +173,36 @@
         != (tailscale_accept_dns | bool)
   changed_when: true
 
+# 광고 경로도 같은 이유로 여기 있다. `up` 인자로만 두면 두 겹으로 막힌다.
+#
+#   1. 위의 `tailscale up` 블록은 미가입 노드에서만 돈다. 이미 붙은 노드는
+#      통째로 건너뛰므로 변수를 바꿔도 아무 일도 안 일어난다
+#   2. 그 `up` 에는 `--reset` 이 붙어 있다. --reset 은 인자로 주지 않은
+#      preference 를 기본값으로 되돌리므로, 손으로 광고해둔 경로가 재조인마다
+#      지워진다
+#
+# 그래서 `--advertise-routes` 는 `tailscale set` 으로 매번 수렴시킨다.
+#
+# ── 알아둘 것 둘 ────────────────────────────────────────────────
+#
+# **광고는 승인이 있어야 실제로 산다.** tailnet admin 콘솔에서 경로를 승인하거나
+# ACL 에 autoApprovers 를 걸어야 다른 노드가 이 경로를 받는다. 승인 전에는
+# `tailscale status` 에 광고만 뜨고 트래픽은 안 온다 — 실패로 안 보인다.
+#
+# **서브넷 라우터는 들어온 트래픽을 자기 IP 로 SNAT 한다**(--snat-subnet-routes
+# 기본값 true). 그래서 워크스테이션 → 파드 트래픽이 파드에는 **라우터 노드의
+# tailnet IP** 에서 온 것으로 보인다. 파드가 아니라 호스트라서 파드 셀렉터로는
+# 허용되지 않는다 — 02-k8s-manifests 의 default-deny-ingress 가 켜지면 ipBlock
+# 규칙이 따로 필요하다 → tasks/todo/002_bootstrap-blockers.md 2번
+- name: 광고 경로를 맞춘다
+  ansible.builtin.command:
+    cmd: >-
+      tailscale set
+      --advertise-routes={{ tailscale_advertise_routes | join(',') }}
+  when: ((_ts_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort)
+        != (tailscale_advertise_routes | sort)
+  changed_when: true
+
 # ── 결과 검증 ─────────────────────────────────────────────────
 
 - name: 가입 결과 조회

@@ -45,8 +45,13 @@ tailscale_tags: ""
 # 서브넷 라우터로 광고할 대역. 단일 클러스터라 노드 IP 도달성만으로는 부족하고
 # 파드 CIDR 까지 라우팅돼야 한다 (decisions/20260728_network-connectivity-and-access).
 #
-# **조인 전에는 비워 둔다.** 파드 CIDR 은 kubeadm join 이후에 확정된다.
-# 값이 정해지면 여기 넣고 롤을 다시 돌린다.
+# **기본은 비어 있다 — 광고하는 노드에서만 켠다.** 지금은 컨트롤플레인이 켠다
+# (inventories/aws/group_vars/role_control_plane.yml). 왜 하필 그 그룹인지는
+# 그쪽 주석에 있다 — 다른 후보는 Vault 나 다른 영역까지 샌다.
+#
+# 값을 바꾸면 가입 상태와 무관하게 반영된다. tasks/main.yml 의 수렴 구간이
+# `tailscale set` 으로 매번 맞춘다 — `up` 인자로만 두면 안 되는 이유가
+# 거기 적혀 있다.
 tailscale_advertise_routes: []
 
 # SSH 를 tailnet 으로도 받을지. 사설망에서 이미 SSH 가 되므로 기본은 끔.
