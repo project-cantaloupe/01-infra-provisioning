@@ -1,0 +1,4 @@
+---
+# 기존 AWS Worker의 과도기 태그(role=worker)를 컨벤션 값으로 해석한다.
+# Terraform 태그가 role=service로 정리되면 이 그룹은 자연히 비게 된다.
+kubernetes_node_role: service

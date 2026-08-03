@@ -3,8 +3,9 @@
 Terraform으로 VM과 네트워크를 만든 뒤 **사람이 별도로 실행**하는 Kubernetes
 구성 자동화다. Terraform의 `apply`가 Ansible을 호출하지 않는다.
 
-AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 노드만 찾고, EICE
-터널로 SSH 접속한다.
+AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kubernetes 노드만
+찾고, EICE 터널로 SSH 접속한다. `role`이 없거나 다른 값을 가진 EC2는
+`platform_aws` 그룹에 들어오지 않는다.
 
 | 태그 | 값 |
 |---|---|
@@ -12,11 +13,16 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 노드�
 | `platform` | `aws` |
 | `role` | `control-plane` 또는 `service` |
 
+기존 AWS Worker의 `role=worker` 태그는 Terraform 태그 정리가 적용될 때까지만
+호환 값으로 읽고, Ansible에서는 `service` 역할로 해석한다. 신규·목표 값에는
+`worker`를 사용하지 않는다.
+
 ## 자동화 범위
 
 | 역할 | 수행 내용 |
 |---|---|
 | `common` | swap 영구 비활성화, 커널 모듈과 sysctl 설정 |
+| `security-hardening` | SSH 보안, UFW, Tailscale-Calico 재귀 루프 차단 |
 | `vpn-mesh` | Tailscale 설치·가입, 노드의 Tailscale IPv4 수집 |
 | `containerd` | containerd 설치, `SystemdCgroup=true` 설정 |
 | `kubeadm-common` | kubelet·kubeadm·kubectl 버전 고정 및 hold |
@@ -90,16 +96,21 @@ AWS 자격증명, `ANSIBLE_CONFIG`.
 group_vars 에서 지웠다. ssh-agent 를 쓴다 — Vault 에서 당겨 파일로 쓰면
 원본이 있는 상태에서 평문 사본이 하나 는다.
 
-## 전체 자동 실행
+## AWS 노드 자동 실행
 
 먼저 인벤토리와 SSH를 확인한 뒤 통합 플레이북을 실행한다.
+기본 인벤토리는 On-Prem이므로 AWS 명령에는 `-i`를 생략하지 않는다.
 
 ```bash
-ansible-inventory --graph
-ansible platform_aws:platform_gcp:platform_onp -m ansible.builtin.ping
+ansible-inventory -i inventories/aws/aws_ec2.yaml --graph
+ansible -i inventories/aws/aws_ec2.yaml platform_aws -m ansible.builtin.ping
 
-ansible-playbook playbooks/site-cluster.yaml --syntax-check
-ansible-playbook playbooks/site-cluster.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml \
+  playbooks/site-cluster.yaml --syntax-check
+ansible-playbook -i inventories/aws/aws_ec2.yaml \
+  playbooks/site-cluster.yaml
+
+unset CNTLP_TAILSCALE_AUTH_KEY
 ```
 
 `ansible-inventory --graph` 를 먼저 보는 것이 습관이어야 한다.
@@ -121,19 +132,29 @@ ansible-playbook playbooks/site-cluster.yaml
 실행한다.
 
 ```bash
-ansible-playbook playbooks/site-prerequisites.yaml
-ansible-playbook playbooks/site-control-plane.yaml
-ansible-playbook playbooks/site-cni.yaml
-ansible-playbook playbooks/site-workers.yaml
-ansible-playbook playbooks/site-node-labels.yaml
-ansible-playbook playbooks/site-verify.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-prerequisites.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-control-plane.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-cni.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-workers.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-node-labels.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-verify.yaml
 ```
 
 마지막 검증 플레이북은 클러스터 설정을 변경하지 않는다. 언제든 다음 명령으로
 현재 상태만 다시 확인할 수 있다.
 
 ```bash
-ansible-playbook playbooks/site-verify.yaml
+ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-verify.yaml
+```
+
+현재 수동 iptables로 넣은 Tailscale-Calico 루프 차단 규칙을 UFW에 영구
+등록할 때는 전체 사전 준비 대신 보안 역할만 제한 실행할 수 있다.
+
+```bash
+ansible-playbook -i inventories/aws/aws_ec2.yaml \
+  playbooks/site-prerequisites.yaml \
+  --tags security \
+  --limit platform_aws
 ```
 
 ## GCP와 On-Prem Worker

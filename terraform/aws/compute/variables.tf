@@ -49,7 +49,7 @@ variable "ssh_public_key_path" {
 variable "control_plane_instance_type" {
   description = "EC2 instance type for the control-plane node"
   type        = string
-  default     = "t3.small"
+  default     = "m7i-flex.large"
 }
 
 variable "worker_instance_type" {

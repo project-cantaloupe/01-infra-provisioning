@@ -3,14 +3,15 @@ aws_account_id = "123456789012"
 aws_region     = "ap-northeast-2"
 
 # Network 상태와 동일한 팀 관리 태그 값을 사용한다.
-owner       = "REPLACE_WITH_TEAM"
-data_class  = "REPLACE_WITH_DATA_CLASS"
+owner       = "team-platform"
+data_class  = "user-audio"
 
 # AWS EC2 Key Pair에 등록할 로컬 SSH 공개키 경로
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 
-# 단일 Control Plane과 단일 Worker PoC의 기본 사양
-control_plane_instance_type = "t3.small"
+# Control Plane만 8 GiB 메모리 사양을 사용하고 Worker는 기존 사양을 유지한다.
+# Free Tier 크레딧과 적용 가능 여부는 계정별 AWS Billing 화면에서 확인한다.
+control_plane_instance_type = "m7i-flex.large"
 worker_instance_type        = "t3.small"
 worker_count                 = 1
 

@@ -3,8 +3,8 @@ aws_account_id = "123456789012"
 aws_region     = "ap-northeast-2"
 
 # 아래 값은 팀에서 확정한 관리 태그 값으로 반드시 교체한다.
-owner       = "REPLACE_WITH_TEAM"
-data_class  = "REPLACE_WITH_DATA_CLASS"
+owner       = "team-platform"
+data_class  = "user-audio"
 
 # 서울 리전에서 제공되는 PostgreSQL과 Graviton 소형 인스턴스를 사용한다.
 postgres_engine_version = "18.3"

@@ -30,8 +30,8 @@ terraform -chdir=terraform/onp         apply      # Proxmox 토큰을 Vault 에�
 
 # 4. 클러스터
 cd ansible
-ansible-inventory --graph                         # 그룹이 비어도 플레이북은 실패하지 않는다
-ansible-playbook playbooks/site-cluster.yaml
+ansible-inventory -i inventories/aws/aws_ec2.yaml --graph   # 그룹이 비어도 플레이북은 실패하지 않는다
+ansible-playbook  -i inventories/aws/aws_ec2.yaml playbooks/site-cluster.yaml
 
 # 5. 그 위에 얹는 것
 terraform -chdir=terraform/aws/database apply

@@ -13,3 +13,12 @@ security_ssh_allow_from:
 # 메시 인터페이스. 이 인터페이스로 들어오는 것은 통째로 허용한다.
 # 클러스터 내부 통신(kubelet 10250, NodePort, CNI)이 전부 여기를 탄다.
 security_mesh_interface: tailscale0
+
+# Calico VXLAN의 터널 IP를 Tailscale이 직접 연결 주소로 다시 선택하면
+# Tailscale → Calico VXLAN → Tailscale 재귀 루프가 생긴다.
+# 아래 값은 그 경로에서 Tailscale UDP만 차단하는 영구 가드에 사용한다.
+security_tailscale_calico_loop_guard: true
+security_calico_interface: vxlan.calico
+security_calico_pod_cidr: >-
+  {{ kubernetes_pod_cidr | default('10.244.0.0/16') }}
+security_tailscale_udp_port: "41641"

@@ -54,8 +54,8 @@ tailscale_tags: ""
 # 거기 적혀 있다.
 tailscale_advertise_routes: []
 
-# SSH 를 tailnet 으로도 받을지. 사설망에서 이미 SSH 가 되므로 기본은 끔.
-tailscale_ssh: false
+# SSH 를 tailnet 으로도 받을지. tailnet 정책에서 허용한 사용자만 들어온다.
+tailscale_ssh: true
 
 # MagicDNS 를 받을지. 기본은 끔 — MagicDNS 가 /etc/resolv.conf 를 갈아치우면
 # 클러스터 DNS(CoreDNS)와 충돌한다. K8s 노드는 클러스터 DNS 를 봐야 한다.
