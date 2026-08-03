@@ -1,0 +1,87 @@
+---
+- name: Argo CD Tailscale Serve 구성
+  when: tailscale_serve_enabled | bool
+  block:
+    - name: Tailscale 가입 상태 조회
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_serve_tailnet_status
+      changed_when: false
+      check_mode: false
+
+    - name: Tailscale 가입 상태 확인
+      ansible.builtin.assert:
+        that:
+          - (tailscale_serve_tailnet_status.stdout | from_json).BackendState == 'Running'
+        fail_msg: Tailscale 가입을 먼저 완료하세요.
+
+    - name: MagicDNS 이름 저장
+      ansible.builtin.set_fact:
+        tailscale_serve_dns_name: >-
+          {{ (tailscale_serve_tailnet_status.stdout | from_json).Self.DNSName
+             | default('') | regex_replace('[.]$', '') }}
+
+    - name: MagicDNS 이름 확인
+      ansible.builtin.assert:
+        that:
+          - tailscale_serve_dns_name | length > 0
+          - tailscale_serve_expected_dns_name | length == 0
+            or tailscale_serve_dns_name == tailscale_serve_expected_dns_name
+        fail_msg: >-
+          MagicDNS 이름이 다릅니다. 현재={{ tailscale_serve_dns_name }},
+          기대={{ tailscale_serve_expected_dns_name }}
+
+    - name: Argo CD NodePort 응답 대기
+      ansible.builtin.uri:
+        url: "{{ tailscale_serve_backend_check_url }}"
+        method: HEAD
+        follow_redirects: none
+        status_code: "{{ tailscale_serve_allowed_status_codes }}"
+        validate_certs: "{{ tailscale_serve_backend_validate_certs }}"
+        use_proxy: false
+        timeout: 5
+      register: tailscale_serve_backend_check
+      retries: 12
+      delay: 5
+      until: tailscale_serve_backend_check.status | default(-1) in tailscale_serve_allowed_status_codes
+      check_mode: false
+
+    - name: 현재 Tailscale Serve 설정 조회
+      ansible.builtin.command: tailscale serve status --json
+      register: tailscale_serve_status_before
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Argo CD HTTPS 프록시 구성
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - serve
+          - --bg
+          - "--https={{ tailscale_serve_https_port }}"
+          - "{{ tailscale_serve_backend_url }}"
+      when:
+        - not ansible_check_mode
+        - tailscale_serve_backend_url not in tailscale_serve_status_before.stdout
+          or ('"' ~ (tailscale_serve_https_port | string) ~ '"')
+             not in tailscale_serve_status_before.stdout
+      changed_when: true
+
+    - name: 적용된 Tailscale Serve 설정 조회
+      ansible.builtin.command: tailscale serve status --json
+      register: tailscale_serve_status_after
+      changed_when: false
+      check_mode: false
+
+    - name: Tailscale Serve 설정 확인
+      ansible.builtin.assert:
+        that:
+          - tailscale_serve_backend_url in tailscale_serve_status_after.stdout
+          - ('"' ~ (tailscale_serve_https_port | string) ~ '"')
+            in tailscale_serve_status_after.stdout
+        fail_msg: Tailscale Serve 설정을 확인하세요.
+      when: not ansible_check_mode
+
+    - name: Argo CD 접속 주소 출력
+      ansible.builtin.debug:
+        msg: "https://{{ tailscale_serve_dns_name }}/"
