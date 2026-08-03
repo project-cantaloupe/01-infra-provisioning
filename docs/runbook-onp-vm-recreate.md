@@ -176,7 +176,7 @@ ansible-playbook playbooks/site-workers.yaml --tags security   # 나중에
 ### 7. 메시에 붙인다
 
 ```bash
-TAILSCALE_AUTH_KEY=tskey-auth-... \
+CNTLP_TAILSCALE_AUTH_KEY=tskey-auth-... \
   ansible-playbook playbooks/site-workers.yaml --tags mesh
 ```
 
@@ -210,6 +210,24 @@ kubectl get node cntlp-onp-wk-01 --show-labels    # platform=onp, role=devops
 ```
 
 **CNI가 아직이면 `NotReady`가 정상이다.**
+
+### 10. Argo CD 접속을 복구한다
+
+Argo CD를 배포한 뒤 Tailscale Serve를 적용한다.
+
+```bash
+kubectl apply -k ../../02-k8s-manifests/platform/onp/argocd
+
+ansible-playbook playbooks/site-argocd-access.yaml
+```
+
+```bash
+curl -I --connect-timeout 5 \
+  https://cntlp-onp-wk-01.tail270b85.ts.net/
+```
+
+NodePort `31430`은 Tailscale Serve의 로컬 backend다. 팀원 접속에는 MagicDNS의
+TCP `443`만 사용한다.
 
 ---
 
