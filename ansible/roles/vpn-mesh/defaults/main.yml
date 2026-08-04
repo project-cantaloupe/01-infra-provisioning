@@ -81,12 +81,34 @@ tailscale_accept_routes: false
 # 맞춘다 — 실측 근거는 그쪽 주석에 있다.
 tailscale_ssh: true
 
-# MagicDNS 를 받을지. 기본은 끔 — MagicDNS 가 /etc/resolv.conf 를 갈아치우면
-# 클러스터 DNS(CoreDNS)와 충돌한다. K8s 노드는 클러스터 DNS 를 봐야 한다.
+# MagicDNS 를 받을지.
 #
-# **K8s 노드가 아니면 켜는 편이 낫다.** 끄면 노드가 자기 tailnet 이름조차
-# 해석하지 못한다. tailnet 이름으로 자기 API 를 확인하는 롤(vault-server 의
-# seal 상태 검증)이 `No address associated with hostname` 으로 죽는다.
-# 밖에서 보면 멀쩡한데 — 워크스테이션은 MagicDNS 가 켜져 있어 잘 푼다 —
-# 노드 안에서만 안 되는 형태라 원인을 찾기 어렵다.
-tailscale_accept_dns: false
+# **이 값은 한때 `false` 였고, 그 근거가 틀렸다.** "MagicDNS 가
+# /etc/resolv.conf 를 갈아치워 CoreDNS 와 충돌한다"고 적혀 있었는데,
+# 2026-08-04 에 5대를 전수 실측하니 그런 일이 일어나지 않았다.
+#
+#   /etc/resolv.conf → stub-resolv.conf → nameserver 127.0.0.53
+#   search 에만 <tailnet>.ts.net 이 추가됨
+#
+#   kubelet 이 파드에 물려주는 /run/systemd/resolve/resolv.conf 는 그대로다
+#     aws → 10.20.0.2   gcp → 169.254.169.254   onp → 1.1.1.1, 8.8.8.8
+#
+# **systemd-resolved 가 있으면 Tailscale 은 resolv.conf 를 갈아치우지 않고
+# split-DNS 로 붙는다.** 자기 도메인만 가져가고 나머지 업스트림은 건드리지
+# 않는다. CoreDNS 가 보는 업스트림이 안 바뀌므로 충돌할 것이 없다.
+# 그래서 5대가 전부 켠 채로 클러스터가 정상이었다.
+#
+# **끄면 오히려 잃는 것만 있다.** 노드가 자기 tailnet 이름조차 해석하지
+# 못한다. tailnet 이름으로 자기 API 를 확인하는 롤(vault-server 의 seal 상태
+# 검증)이 `No address associated with hostname` 으로 죽는다. 밖에서 보면
+# 멀쩡한데 — 워크스테이션은 MagicDNS 가 켜져 있어 잘 푼다 — 노드 안에서만
+# 안 되는 형태라 원인을 찾기 어렵다.
+#
+# **systemd-resolved 가 없는 노드에서는 다시 판단해야 한다.** 그런 노드에서는
+# Tailscale 이 resolv.conf 를 직접 고치므로 옛 걱정이 그대로 성립한다.
+# 그때는 이 값을 그 호스트에서만 false 로 덮는다.
+#
+# 확인 방법 — 노드에서:
+#   readlink -f /etc/resolv.conf                      # stub-resolv.conf 여야 한다
+#   grep ^nameserver /run/systemd/resolve/resolv.conf # 100.100.100.100 이 아니어야 한다
+tailscale_accept_dns: true
