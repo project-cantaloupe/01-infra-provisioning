@@ -71,6 +71,14 @@ tailscale_advertise_routes: []
 tailscale_accept_routes: false
 
 # SSH 를 tailnet 으로도 받을지. tailnet 정책에서 허용한 사용자만 들어온다.
+#
+# **이 값이 노드 접근 경로를 정한다.** 켜져 있으면 개인키 없이 tailnet ACL 로
+# 들어가고, 꺼져 있으면 노드마다 다른 우회로가 필요해진다 — GCP 는 gcloud,
+# AWS 는 EC2 Instance Connect 다. 실제로 그 갈라진 상태로 오래 있었다.
+#
+# 위 accept-routes 와 똑같이, 이것도 `up` 인자로만 두면 이미 가입한 노드에는
+# 영원히 안 먹는다. tasks/main.yml 의 수렴 구간이 `tailscale set` 으로 매번
+# 맞춘다 — 실측 근거는 그쪽 주석에 있다.
 tailscale_ssh: true
 
 # MagicDNS 를 받을지. 기본은 끔 — MagicDNS 가 /etc/resolv.conf 를 갈아치우면

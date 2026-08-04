@@ -1,9 +1,34 @@
 ---
 # GCP 노드의 그룹 변수 (labels.platform=gcp 가 만드는 platform_gcp 그룹).
+
+# Ubuntu 이미지의 기본 계정이다 (ubuntu-2404-lts-amd64).
+ansible_user: ubuntu
+ansible_python_interpreter: /usr/bin/python3
+
+# **개인키를 지정하지 않는다. Tailscale SSH 로 들어간다.**
 #
-# 이 인벤토리에는 여태 group_vars 가 없었다. 접속 계정·키는 아직
-# 명령줄이나 ~/.ssh/config 에 의존한다 — aws·onp 처럼 여기로 모으는 것은
-# GCP 노드를 실제로 다시 돌릴 때 한다.
+# GCP 워커는 외부 IP 가 없고 IAP 방화벽 규칙만 열려 있어서, gcloud 없이는
+# 22 번에 닿을 방법이 메시뿐이다. 그런데 메시에 붙어 있어도 여태 못 들어갔다 —
+# 노드의 `RunSSH` pref 가 꺼져 있었기 때문이다 (2026-08-04 실측).
+# `/home/ubuntu/.ssh/authorized_keys` 도 0 줄이었다.
+#
+# 키를 심는 대신 pref 를 켜는 쪽을 골랐다. 그게 롤의 기본값이고
+# (roles/vpn-mesh/defaults/main.yml 의 tailscale_ssh), tailnet ACL 이 이미
+# 같은 태그를 허용하고 있었다 — cntlp-onp-wk-01 이 같은 tag:cntlp-wk 로 키 없이
+# 들어가지는 것이 증거다. 키를 심으면 벗어나려던 키 산개가 하나 더 늘 뿐이다.
+# → tasks/todo/009_node-access-paths.md, decisions/20260731_secret-access-no-fallback.md
+#
+# 이제 그 pref 는 롤이 매번 수렴시킨다 (roles/vpn-mesh/tasks/main.yml
+# 「SSH 설정을 맞춘다」). 손으로 켠 것이 재조인 때 --reset 으로 날아가지 않는다.
+
+# Tailscale SSH 는 tailscaled 가 세션마다 호스트 키를 내므로 워크스테이션의
+# known_hosts 와 어긋난다. 노드를 다시 만들면 또 바뀐다.
+ansible_ssh_common_args: '-o StrictHostKeyChecking=accept-new'
+
+# **인벤토리 플러그인 자체는 GCP 자격증명이 필요하다.** 접속은 메시로 하지만
+# 호스트 목록은 GCP API 에서 온다. GCP_SERVICE_ACCOUNT_FILE 과 GCP_PROJECT 가
+# 없으면 gcp_compute.yaml 파싱이 실패하고, ansible.cfg 의 unparsed_is_failed
+# 때문에 (의도대로) 조용한 0 hosts 대신 에러로 죽는다.
 
 # tailnet 태그 — roles/vpn-mesh/defaults/main.yml 참고. 롤에는 기본값이 없다.
 # GCP 호스트는 전부 워커다. 워커는 플랫폼과 무관하게 한 태그를 쓰고,

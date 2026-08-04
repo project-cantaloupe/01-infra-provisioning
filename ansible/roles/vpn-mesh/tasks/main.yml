@@ -224,6 +224,31 @@
         != (tailscale_accept_routes | bool)
   changed_when: true
 
+# Tailscale SSH 도 정확히 같은 함정이었다. `--ssh` 가 위 `tailscale up` 인자로만
+# 있어서, 이미 가입한 노드에는 `tailscale_ssh` 를 바꿔도 영원히 반영되지 않는다.
+#
+# **그래서 실물이 갈라져 있었다** (2026-08-04 실측, prefs 직접 조회):
+#
+#   RunSSH=true    cntlp-aws-cp-01 · cntlp-onp-wk-01
+#   RunSSH=false   cntlp-gcp-wk-01 · cntlp-gcp-wk-02 · cntlp-aws-wk-01
+#
+# 롤의 기본값은 `tailscale_ssh: true` 인데도 5대 중 2대만 켜져 있었다. 꺼진
+# 3대는 `--ssh` 가 없던 시절에 가입한 노드다. 그 결과가 **접근 경로가 노드마다
+# 다른 상태**였다 — GCP 2대는 아예 못 들어가고, aws-wk-01 은 접속할 때마다
+# EC2 Instance Connect 로 60초짜리 키를 밀어야 했다.
+# → tasks/todo/009_node-access-paths.md
+#
+# ACL 은 이미 허용하고 있었다. `cntlp-onp-wk-01` 이 같은 `tag:cntlp-wk` 로
+# 키 없이 접속되는 것이 그 증거다. 막고 있던 것은 노드의 이 pref 하나였다.
+- name: SSH 설정을 맞춘다
+  ansible.builtin.command:
+    cmd: >-
+      tailscale set
+      --ssh={{ tailscale_ssh | bool | lower }}
+  when: ((_ts_prefs.stdout | from_json).RunSSH | default(false, true) | bool)
+        != (tailscale_ssh | bool)
+  changed_when: true
+
 # ── 결과 검증 ─────────────────────────────────────────────────
 
 - name: 가입 결과 조회
