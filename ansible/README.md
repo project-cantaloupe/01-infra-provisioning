@@ -24,6 +24,7 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kuberne
 | `common` | swap 영구 비활성화, 커널 모듈과 sysctl 설정 |
 | `security-hardening` | SSH 보안, UFW, Tailscale-Calico 재귀 루프 차단 |
 | `vpn-mesh` | Tailscale 설치·가입, 노드의 Tailscale IPv4 수집 |
+| `tailscale-serve` | Argo CD NodePort를 MagicDNS HTTPS로 연결 |
 | `containerd` | containerd 설치, `SystemdCgroup=true` 설정 |
 | `kubeadm-common` | kubelet·kubeadm·kubectl 버전 고정 및 hold |
 | `kubeadm-control-plane` | 단일 Control Plane 초기화와 필수 노드 라벨 적용 |
@@ -163,3 +164,24 @@ GCP와 On-Prem도 동적 인벤토리를 사용한다. GCP VM에는 Terraform이
 `platform=gcp`와 `role=monitoring|logging`을, Proxmox VM에는
 `platform-onp`와 `role-devops`를 부여한다. 접속 정보나 고정 IP를 정적
 `hosts.ini`에 복사하지 않는다.
+
+## Argo CD MagicDNS 접속
+
+Argo CD를 먼저 배포한 뒤 On-Prem 노드에서 Tailscale Serve를 구성한다.
+
+```bash
+kubectl apply -k ../../02-k8s-manifests/platform/onp/argocd
+
+ansible-playbook -i inventories/onp/proxmox.yaml \
+  playbooks/site-argocd-access.yaml
+```
+
+접속 주소는 다음과 같다.
+
+```text
+https://cntlp-onp-wk-01.tail270b85.ts.net/
+```
+
+새 VM의 최초 가입에 사용하는 Tailscale auth key는
+`tag:cntlp-wk,tag:cntlp-ui`를 부여할 수 있어야 한다. tailnet 정책에는
+`group:cntlp-team`에서 `tag:cntlp-ui`의 TCP `443` 접근만 허용한다.

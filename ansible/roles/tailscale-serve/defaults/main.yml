@@ -1,0 +1,16 @@
+---
+tailscale_serve_enabled: false
+tailscale_serve_https_port: 443
+tailscale_serve_backend_url: https+insecure://127.0.0.1:31430
+tailscale_serve_backend_check_url: https://127.0.0.1:31430/
+tailscale_serve_backend_validate_certs: false
+tailscale_serve_expected_dns_name: ""
+
+tailscale_serve_allowed_status_codes:
+  - 200
+  - 301
+  - 302
+  - 307
+  - 308
+  - 401
+  - 403

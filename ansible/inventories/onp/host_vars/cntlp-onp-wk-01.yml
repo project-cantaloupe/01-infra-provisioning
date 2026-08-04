@@ -1,0 +1,8 @@
+---
+# Argo CD UI를 제공하는 On-Prem 노드 설정.
+tailscale_hostname: cntlp-onp-wk-01
+tailscale_tags: "tag:cntlp-wk,tag:cntlp-ui"
+
+# MagicDNS HTTPS를 Argo CD NodePort로 전달한다.
+tailscale_serve_enabled: true
+tailscale_serve_expected_dns_name: cntlp-onp-wk-01.tail270b85.ts.net
