@@ -1,0 +1,97 @@
+---
+- name: Monitoring Tailscale Serve 구성
+  when: tailscale_monitoring_serve_enabled | bool
+  block:
+    - name: Tailscale 가입 상태 조회
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_monitoring_tailnet_status
+      changed_when: false
+      check_mode: false
+
+    - name: Tailscale 가입 상태와 MagicDNS 이름 확인
+      ansible.builtin.assert:
+        that:
+          - (tailscale_monitoring_tailnet_status.stdout | from_json).BackendState == 'Running'
+          - tailscale_monitoring_dns_name | length > 0
+          - tailscale_monitoring_serve_expected_dns_name | length == 0
+            or tailscale_monitoring_dns_name == tailscale_monitoring_serve_expected_dns_name
+        fail_msg: >-
+          Tailscale 상태 또는 MagicDNS 이름이 올바르지 않습니다.
+          현재={{ tailscale_monitoring_dns_name }},
+          기대={{ tailscale_monitoring_serve_expected_dns_name }}
+      vars:
+        tailscale_monitoring_dns_name: >-
+          {{ (tailscale_monitoring_tailnet_status.stdout | from_json).Self.DNSName
+             | default('') | regex_replace('[.]$', '') }}
+
+    - name: Monitoring UI 로컬 backend 응답 확인
+      ansible.builtin.uri:
+        url: "{{ item }}"
+        method: GET
+        follow_redirects: none
+        status_code: "{{ tailscale_monitoring_allowed_status_codes }}"
+        use_proxy: false
+        timeout: 5
+      loop:
+        - "{{ tailscale_monitoring_opencost_check_url }}"
+        - "{{ tailscale_monitoring_grafana_check_url }}"
+      register: tailscale_monitoring_backend_checks
+      retries: 12
+      delay: 5
+      until: tailscale_monitoring_backend_checks.status | default(-1) in tailscale_monitoring_allowed_status_codes
+      check_mode: false
+
+    - name: 현재 Tailscale Serve 설정 조회
+      ansible.builtin.command: tailscale serve status --json
+      register: tailscale_monitoring_serve_before
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: OpenCost HTTPS 루트 프록시 구성
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - serve
+          - --bg
+          - "--https={{ tailscale_monitoring_serve_https_port }}"
+          - "{{ tailscale_monitoring_opencost_backend_url }}"
+      when:
+        - not ansible_check_mode
+        - tailscale_monitoring_opencost_backend_url not in tailscale_monitoring_serve_before.stdout
+      changed_when: true
+
+    - name: Grafana HTTPS 서브경로 프록시 구성
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - serve
+          - --bg
+          - "--https={{ tailscale_monitoring_serve_https_port }}"
+          - "--set-path={{ tailscale_monitoring_grafana_path }}"
+          - "{{ tailscale_monitoring_grafana_backend_url }}"
+      when:
+        - not ansible_check_mode
+        - tailscale_monitoring_grafana_backend_url not in tailscale_monitoring_serve_before.stdout
+      changed_when: true
+
+    - name: 적용된 Tailscale Serve 설정 조회
+      ansible.builtin.command: tailscale serve status --json
+      register: tailscale_monitoring_serve_after
+      changed_when: false
+      check_mode: false
+
+    - name: Monitoring Tailscale Serve 설정 확인
+      ansible.builtin.assert:
+        that:
+          - tailscale_monitoring_opencost_backend_url in tailscale_monitoring_serve_after.stdout
+          - tailscale_monitoring_grafana_backend_url in tailscale_monitoring_serve_after.stdout
+          - tailscale_monitoring_grafana_path in tailscale_monitoring_serve_after.stdout
+        fail_msg: Monitoring Tailscale Serve 설정을 확인하세요.
+      when: not ansible_check_mode
+
+    - name: Monitoring 접속 주소 출력
+      ansible.builtin.debug:
+        msg:
+          - "OpenCost: https://{{ tailscale_monitoring_serve_expected_dns_name }}/"
+          - "Grafana: https://{{ tailscale_monitoring_serve_expected_dns_name }}{{ tailscale_monitoring_grafana_path }}/"

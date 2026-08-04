@@ -1,0 +1,9 @@
+---
+# Monitoring stack 배포 후 MagicDNS HTTPS 접속을 구성한다.
+- name: Monitoring Tailscale 접속 구성
+  hosts: cntlp-gcp-wk-01
+  become: true
+  gather_facts: false
+  roles:
+    - role: tailscale-monitoring-serve
+      tags: [monitoring, tailscale-serve]

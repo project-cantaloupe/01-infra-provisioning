@@ -148,6 +148,24 @@ GCP와 On-Prem도 동적 인벤토리를 사용한다. GCP VM에는 Terraform이
 `platform-onp`와 `role-devops`를 부여한다. 접속 정보나 고정 IP를 정적
 `hosts.ini`에 복사하지 않는다.
 
+## Monitoring UI Tailnet 접속
+
+Prometheus stack과 OpenCost 배포가 끝나면 GCP monitoring Worker에 Tailscale
+Serve를 구성한다. NodePort는 로컬 backend로만 사용하고 사용자는 HTTPS:443만
+접속한다.
+
+```bash
+ansible-playbook -i inventories/gcp/gcp_compute.yaml \
+  playbooks/site-monitoring-access.yaml
+```
+
+- OpenCost: `https://cntlp-gcp-wk-01.tail270b85.ts.net/`
+- Grafana: `https://cntlp-gcp-wk-01.tail270b85.ts.net/grafana/`
+
+Tailnet 정책은 monitoring Worker의 TCP 443 접근만 허용하면 된다. VM 재생성
+후에는 이 플레이북을 다시 실행하며, `tailscale serve --bg` 설정은 일반 재부팅
+뒤에도 유지된다.
+
 ## Argo CD MagicDNS 접속
 
 Argo CD를 먼저 배포한 뒤 On-Prem 노드에서 Tailscale Serve를 구성한다.

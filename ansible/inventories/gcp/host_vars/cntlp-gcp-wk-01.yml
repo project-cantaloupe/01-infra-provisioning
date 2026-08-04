@@ -1,0 +1,3 @@
+---
+tailscale_monitoring_serve_enabled: true
+tailscale_monitoring_serve_expected_dns_name: cntlp-gcp-wk-01.tail270b85.ts.net

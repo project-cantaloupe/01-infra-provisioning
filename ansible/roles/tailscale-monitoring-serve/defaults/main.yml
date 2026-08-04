@@ -1,0 +1,19 @@
+---
+tailscale_monitoring_serve_enabled: false
+tailscale_monitoring_serve_https_port: 443
+tailscale_monitoring_serve_expected_dns_name: ""
+
+tailscale_monitoring_opencost_backend_url: http://127.0.0.1:30990
+tailscale_monitoring_opencost_check_url: http://127.0.0.1:30990/healthz
+
+# Tailscale Serve removes the matched /grafana prefix before proxying. Include
+# it in the backend target so Grafana receives the sub-path configured in
+# grafana.ini.
+tailscale_monitoring_grafana_path: /grafana
+tailscale_monitoring_grafana_backend_url: http://127.0.0.1:30300/grafana
+tailscale_monitoring_grafana_check_url: http://127.0.0.1:30300/grafana/api/health
+
+tailscale_monitoring_allowed_status_codes:
+  - 200
+  - 301
+  - 302
