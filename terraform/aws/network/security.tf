@@ -90,8 +90,8 @@ resource "aws_security_group" "worker" {
   description = "Access rules specific to Kubernetes workers"
   vpc_id      = aws_vpc.main.id
 
-  # Public Load Balancer의 listener와 Kubernetes Service 대상 포트가
-  # 확정되면 LB에서 Worker로 들어오는 ingress 규칙을 여기에 추가한다.
+  # Public Load Balancer처럼 별도 수명주기를 가진 자원의 ingress 규칙은
+  # 해당 Terraform 상태가 별도 rule resource로 관리한다.
   tags = {
     Name = "${local.name_prefix}-wk-sg"
   }

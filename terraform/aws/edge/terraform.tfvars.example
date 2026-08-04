@@ -1,0 +1,23 @@
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+
+owner      = "team-platform"
+data_class = "user-audio"
+
+# Istio ingress gateway Service와 동일한 값을 유지한다.
+audio_ingress_http_node_port   = 30080
+audio_ingress_https_node_port  = 30443
+audio_ingress_health_node_port = 32021
+
+# PoC 삭제를 막지 않도록 기본값을 유지한다.
+enable_deletion_protection = false
+
+# Route53 주소가 확정되면 세 값을 함께 설정한다.
+create_dns_record = false
+route53_zone_id   = null
+public_host       = null
+
+# Self-managed Kubernetes OIDC 구성이 준비된 뒤에만 활성화한다.
+enable_cert_manager_iam   = false
+cluster_oidc_provider_arn = null
+cluster_oidc_issuer_url   = null
