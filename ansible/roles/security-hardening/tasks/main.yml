@@ -67,7 +67,7 @@
     #   LOGLEVEL 도 같은 파일이라 [UFW BLOCK] 로그가 0건 — 진단 단서까지 사라졌다
     #
     # 노드는 살아 있는데 완전히 어두워진다. Proxmox 콘솔로만 복구된다.
-    # → findings/20260805_ufw-empty-default-policy.md
+    # → findings/20260805_ufw-enable-blackout.md
     #
     # FORWARD 가 ACCEPT 여야 하는 이유는 따로다 — 파드 트래픽이 노드를 FORWARD 로
     # 지난다. DROP 이면 CNI 를 깔아도 파드끼리 안 통한다.
@@ -155,6 +155,63 @@
     # 기본 정책은 위에서 파일에 직접 박았다. `ufw default` 는 쓰지 않는다 —
     # 이유는 그 태스크 주석에 있다.
 
+    # ── ufw 고아 체인 복구 ─────────────────────────────────────
+    #
+    # **ufw 는 primary 체인이 이미 있으면 점프를 붙이지 않는다.**
+    # /lib/ufw/ufw-init-functions 의 구조가 이렇다.
+    #
+    #   if iptables -L ufw-before-logging-input -n >/dev/null 2>&1 ; then
+    #       delete_chains          # 비우기만 한다. 주석에 primary 는 일부러 남긴다고 적혀 있다
+    #   else
+    #       ...  -A INPUT -j ufw-before-input ...    # 점프는 여기서만 생긴다
+    #   fi
+    #
+    # 「체인이 있으면 점프도 있다」를 전제로 한다. **그 전제가 깨질 수 있다** —
+    # `iptables -F INPUT` 은 INPUT 의 규칙만 지우고 사용자 체인은 남긴다.
+    # 클러스터를 걷어내거나 CNI 를 갈아끼우면 그렇게 된다.
+    #
+    # 그 상태로 `ufw enable` 하면 **정책만 DROP 이 되고 허용 규칙은 연결되지
+    # 않는다.** ufw 는 "Firewall is active" 라고 성공을 보고하고, 체인과 규칙도
+    # 다 만들어지고, `ufw status` 도 active 로 뜬다. 그런데 INPUT 에는 점프가
+    # 없어서 모든 것이 policy DROP 으로 사라진다. **로깅 체인도 연결되지 않아
+    # [UFW BLOCK] 기록조차 남지 않는다.**
+    #
+    # 2026-08-05 에 cntlp-onp-wk-01 이 이 상태였다. flannel 쓰던 옛 클러스터의
+    # 잔재였고, 다섯 노드 중 이 하나만 그랬다.
+    # → findings/20260805_ufw-enable-blackout.md
+    - name: ufw 체인과 INPUT 점프의 짝이 맞는지 본다
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "chain: $(iptables -L ufw-before-logging-input -n >/dev/null 2>&1 && echo 1 || echo 0)"
+        echo "jump: $(iptables -S INPUT 2>/dev/null | grep -c 'j ufw-before-input' || true)"
+      args:
+        executable: /bin/bash
+      register: _ufw_wiring
+      changed_when: false
+      check_mode: false
+
+    - name: 고아 상태인지 판정한다
+      ansible.builtin.set_fact:
+        _ufw_orphaned: >-
+          {{ (_ufw_wiring.stdout | from_yaml).chain | int == 1
+             and (_ufw_wiring.stdout | from_yaml).jump | int == 0 }}
+
+    # 체인을 지우면 다음 enable 이 else 분기를 타서 점프를 새로 붙인다.
+    # 점프가 없으므로 참조하는 것이 없어 삭제가 그냥 된다.
+    - name: 고아 체인을 지워 ufw 가 다시 붙이게 한다
+      ansible.builtin.shell: |
+        set -o pipefail
+        for t in iptables ip6tables; do
+          for c in $($t -S 2>/dev/null | awk '/^-N ufw6?-/ {print $2}'); do
+            $t -F "$c" 2>/dev/null || true
+            $t -X "$c" 2>/dev/null || true
+          done
+        done
+      args:
+        executable: /bin/bash
+      when: _ufw_orphaned | bool
+      changed_when: true
+
     # ── 켜기 직전 마지막 관문 ──────────────────────────────────
     #
     # **정책이 비어 있으면 여기서 멈춘다.** 위 lineinfile 이 성공했어도 파일을
@@ -193,6 +250,34 @@
     - name: ufw 를 켠다
       community.general.ufw:
         state: enabled
+
+    # **켰다고 연결된 것이 아니다.** 위 고아 체인 문제가 정확히 그 형태였다.
+    # `ufw status` 도 active 고 규칙도 다 들어갔는데 INPUT 에 점프가 없었다.
+    # 여기까지 왔는데 점프가 없으면 노드는 이미 어두워졌고 이 태스크는 돌지도
+    # 못한다(연결이 끊겨 UNREACHABLE 이 된다). 그래도 남긴다 — 연결이 살아남는
+    # 조합에서는 이게 유일한 경보다.
+    - name: 점프가 실제로 붙었는지 확인한다
+      ansible.builtin.command: iptables -S INPUT
+      register: _ufw_input_after
+      changed_when: false
+      check_mode: false
+
+    - name: 점프가 없으면 실패로 알린다
+      ansible.builtin.assert:
+        that:
+          - _ufw_input_after.stdout is search('-j ufw-before-input')
+          - _ufw_input_after.stdout is search('-j ufw-after-input')
+        fail_msg: |
+          ufw 는 켜졌는데 INPUT 에 점프가 붙지 않았다. **이 노드는 지금
+          policy DROP 만 걸린 상태이고 허용 규칙이 경로에 없다.**
+
+          즉시 되돌린다:  sudo ufw disable
+
+          원인은 대개 고아 primary 체인이다. 위 「고아 체인을 지워…」 태스크가
+          잡았어야 하는데 놓쳤다는 뜻이므로 판정 로직을 다시 본다.
+          → findings/20260805_ufw-enable-blackout.md
+        success_msg: INPUT 점프 확인 — ufw 규칙이 경로에 연결됐다
+      when: not ansible_check_mode
 
     - name: 변경된 UFW 설정을 즉시 반영한다
       ansible.builtin.meta: flush_handlers
