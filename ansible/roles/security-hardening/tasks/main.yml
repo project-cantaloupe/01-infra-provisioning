@@ -50,12 +50,41 @@
         update_cache: true
         cache_valid_time: 3600
 
-    # 파드 트래픽이 FORWARD 를 지난다. 이걸 놓치면 CNI 를 깔아도 파드가 서로 못 본다.
-    - name: FORWARD 기본 정책을 ACCEPT 로 바꾼다
+    # ── 기본 정책을 파일에 직접 쓴다 ────────────────────────────
+    #
+    # **`ufw default` 명령에 맡기지 않는다.** ufw 가 inactive 일 때 그 명령은
+    # 상태를 못 읽고 조용히 아무것도 안 쓰면서 성공한다. community.general.ufw
+    # 모듈도 그걸 그대로 `ok` 로 보고한다 — 바꾸지 않았는데 바꿨다고 믿게 된다.
+    #
+    # **2026-08-04 에 이것 때문에 노드 하나를 잃었다.** cntlp-onp-wk-01 의
+    # /etc/default/ufw 에 DEFAULT_*_POLICY 세 줄이 통째로 없었는데(flannel 쓰던
+    # 옛 클러스터의 잔재다), 롤은 `ok` 를 찍고 지나갔고 `ufw enable` 이 **정책이
+    # 빈 채로** 방화벽을 켰다. 빈 정책은 양방향 DROP 이다.
+    #
+    #   나가는 DERP 연결이 죽어 tailnet 에서 offline
+    #   sshd 의 SYN-ACK 이 못 나가 SSH 가 timeout
+    #   ICMP echo-reply 도 못 나가 ping 100% 손실
+    #   LOGLEVEL 도 같은 파일이라 [UFW BLOCK] 로그가 0건 — 진단 단서까지 사라졌다
+    #
+    # 노드는 살아 있는데 완전히 어두워진다. Proxmox 콘솔로만 복구된다.
+    # → findings/20260805_ufw-empty-default-policy.md
+    #
+    # FORWARD 가 ACCEPT 여야 하는 이유는 따로다 — 파드 트래픽이 노드를 FORWARD 로
+    # 지난다. DROP 이면 CNI 를 깔아도 파드끼리 안 통한다.
+    - name: 기본 정책과 로그 수준을 파일에 박는다
       ansible.builtin.lineinfile:
         path: /etc/default/ufw
-        regexp: '^DEFAULT_FORWARD_POLICY='
-        line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+        regexp: "^{{ item.key }}="
+        line: '{{ item.key }}="{{ item.value }}"'
+        create: false
+      loop:
+        - { key: DEFAULT_INPUT_POLICY, value: DROP }
+        - { key: DEFAULT_OUTPUT_POLICY, value: ACCEPT }
+        - { key: DEFAULT_FORWARD_POLICY, value: ACCEPT }
+        # 로깅이 꺼져 있으면 막혔을 때 무엇이 막혔는지 알 방법이 없다.
+        - { key: LOGLEVEL, value: low }
+      loop_control:
+        label: "{{ item.key }}={{ item.value }}"
       notify: reload ufw
 
     # ── 여기부터 규칙. enable 은 맨 마지막이다 ──────────────────
@@ -123,17 +152,37 @@
         interface: "{{ security_mesh_interface }}"
         direction: in
 
-    - name: 나가는 것은 허용한다
-      community.general.ufw:
-        default: allow
-        direction: outgoing
+    # 기본 정책은 위에서 파일에 직접 박았다. `ufw default` 는 쓰지 않는다 —
+    # 이유는 그 태스크 주석에 있다.
 
-    - name: 들어오는 것은 기본 차단한다
-      community.general.ufw:
-        default: deny
-        direction: incoming
+    # ── 켜기 직전 마지막 관문 ──────────────────────────────────
+    #
+    # **정책이 비어 있으면 여기서 멈춘다.** 위 lineinfile 이 성공했어도 파일을
+    # 다시 읽어 확인한다. 켠 뒤에 틀린 것을 알면 노드가 어두워진 다음이고,
+    # 그때는 콘솔로만 들어갈 수 있다.
+    - name: 기본 정책이 실제로 파일에 있는지 다시 읽는다
+      ansible.builtin.slurp:
+        src: /etc/default/ufw
+      register: _ufw_defaults
+      check_mode: false
 
-    # 규칙이 전부 들어간 뒤에야 켠다.
+    - name: 정책이 비어 있으면 켜지 않는다
+      ansible.builtin.assert:
+        that:
+          - _ufw_defaults.content | b64decode is search('^DEFAULT_INPUT_POLICY="DROP"', multiline=True)
+          - _ufw_defaults.content | b64decode is search('^DEFAULT_OUTPUT_POLICY="ACCEPT"', multiline=True)
+          - _ufw_defaults.content | b64decode is search('^DEFAULT_FORWARD_POLICY="ACCEPT"', multiline=True)
+        fail_msg: |
+          /etc/default/ufw 의 기본 정책이 기대와 다르다. **방화벽을 켜지 않는다.**
+
+          정책이 비면 ufw 가 양방향 DROP 으로 켜지고 노드가 통째로 어두워진다.
+          나가는 연결까지 막혀 tailnet 에서도 떨어지므로 콘솔로만 복구된다.
+
+          현재 파일:
+          {{ _ufw_defaults.content | b64decode }}
+        success_msg: 기본 정책 확인 — INPUT=DROP · OUTPUT=ACCEPT · FORWARD=ACCEPT
+
+    # 규칙이 전부 들어가고 정책까지 확인된 뒤에야 켠다.
     - name: ufw 를 켠다
       community.general.ufw:
         state: enabled
