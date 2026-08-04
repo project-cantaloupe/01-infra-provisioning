@@ -79,6 +79,18 @@
 # 그래서 있는 것을 찾아 켠다. 새로 깔지 않는다 — 이미지가 준 것을 쓰는 편이
 # 클라우드 시간 서비스 설정을 그대로 유지한다.
 
+# **check_mode: false 가 없으면 --check 가 어느 노드에서도 통과하지 못한다.**
+#
+# ansible 은 check 모드에서 command 를 기본적으로 건너뛴다. 그러면 이 태스크가
+# 안 돌고 _ntp_units.stdout 이 비어서, 아래 set_fact 가 _ntp_unit 을 '' 로
+# 만들고, 그다음 assert 가 "chrony 도 systemd-timesyncd 도 없다" 로 죽는다.
+# 실물에는 systemd-timesyncd 가 enabled·active 인데도 그렇다 (2026-08-04 실측).
+#
+# **건너뛰어서 틀린 값이 되는 것과, 건너뛰어서 검사를 안 하는 것은 다르다.**
+# 이 롤의 다른 확인 태스크들(시간 동기화·swap)은 앞선 변경의 결과를 보는
+# 것이라 check 모드에서 건너뛰는 편이 정직하다 — 억지로 돌리면 아직 수렴하지
+# 않은 노드에서 없던 실패를 만든다. 여기는 반대로, 건너뛰면 사실이 아닌 값이
+# 만들어져 뒤의 assert 를 오도한다. 그래서 이 태스크만 강제로 돌린다.
 - name: 어떤 NTP 유닛이 있는지 본다
   ansible.builtin.command:
     argv:
@@ -90,6 +102,7 @@
   register: _ntp_units
   changed_when: false
   failed_when: false
+  check_mode: false
 
 - name: 쓸 유닛을 정한다
   ansible.builtin.set_fact:
