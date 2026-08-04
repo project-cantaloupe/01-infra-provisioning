@@ -56,5 +56,19 @@
         # 끄면 vault-server 의 seal 상태 검증이 자기 tailnet 이름을 못 풀어
         # 죽는다 — api_addr 도 TLS 도메인도 그 이름이다.
         tailscale_accept_dns: true
+
+        # **Tailscale SSH 는 이 노드에서만 끈다.** 롤 기본값은 켬이고, K8s
+        # 노드 5대는 그걸로 접근 경로를 하나로 모았다
+        # (tasks/todo/009_node-access-paths.md). Vault 는 거기 끼우지 않는다.
+        #
+        # 켜면 tailnet ACL 하나가 시크릿 저장소의 셸까지 가르게 된다. 지금
+        # Vault 접근은 API(8200)와 KMS auto-unseal 로 닫혀 있고, 셸이 필요한
+        # 경우는 secret/ssh/cntlp-private 의 전용 키가 담당한다 — 경로가 둘로
+        # 갈려 있는 것이 여기서는 의도다.
+        #
+        # 이 줄이 없으면 롤 기본값이 상속돼 **site-vault 를 돌리는 것만으로**
+        # Vault 의 접근 태세가 바뀐다. 실물은 지금 꺼져 있다(2026-08-04 확인).
+        # 켤지 말지는 Keycloak OIDC 전환과 함께 볼 별도 판정이다 → CONSTRAINTS.md
+        tailscale_ssh: false
     - role: vault-server
       tags: [vault]
