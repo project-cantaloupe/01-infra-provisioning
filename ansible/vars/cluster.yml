@@ -36,7 +36,20 @@ calico_manifest_directory: /etc/kubernetes/addons/calico
 # 비트 20 위로만 남긴다. Tailscale 이 쓰는 것은 비트 18·19 둘뿐이다.
 # kube-proxy 는 0x4000·0x8000(비트 14·15)이라 양쪽 다 안 건드린다.
 #
-# **12비트로 모자라면 Felix 가 조용히 죽지 않고 로그로만 알린다.**
-#   kubectl -n calico-system logs ds/calico-node -c calico-node | grep -i 'mark bit'
-# 모자라다고 나오면 0xfff30000 으로 올린다 — 비트 16·17 은 Tailscale 이 안 쓴다.
-calico_iptables_mark_mask: "0xfff00000"
+# **최상위 비트(31)는 못 쓴다. CRD 필드가 int32 다.**
+#   iptablesMarkMask:  format: int32,  type: integer   (v3.32.1 CRD)
+#
+# 그래서 한때 여기 있던 0xfff00000(=4293918720)은 **적용된 적이 없다.**
+# API 서버가 이렇게 거부한다 (2026-08-04 dry-run 확인):
+#
+#   The FelixConfiguration "default" is invalid: Invalid value: "":
+#   Checked value must be of type integer with format int32 in spec.iptablesMarkMask
+#
+# 0x7ff00000 은 비트 20–30 으로 11비트다. Felix 가 필요로 하는 최소 8비트를
+# 넘고, 실측에서 이 값으로 정상 동작한다.
+#
+# **비트가 모자라면 Felix 는 죽지 않는다.** 로그로만 알리고 기본값 근처로
+# 돌아간다 — 겹친 채로 "정상" 으로 보인다. 그 판정은 아래 롤이 한다
+# (roles/cni-calico/tasks/main.yml 의 「Felix 가 고른 mark 비트를 검사한다」).
+# 정말 모자라면 0x7ff30000 으로 올린다 — 비트 16·17 은 Tailscale 이 안 쓴다.
+calico_iptables_mark_mask: "0x7ff00000"
