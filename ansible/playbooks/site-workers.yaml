@@ -36,3 +36,5 @@
         tailscale_manage_packages: false
     - role: kubeadm-worker
       tags: [join, kubeadm]
+    - role: kubernetes-node-metadata
+      tags: [node-metadata, finops]

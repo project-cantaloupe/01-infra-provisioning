@@ -11,3 +11,5 @@
       vars:
         tailscale_manage_packages: false
     - kubeadm-control-plane
+    - role: kubernetes-node-metadata
+      tags: [node-metadata, finops]

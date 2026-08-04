@@ -1,0 +1,141 @@
+---
+- name: Node metadata 구성 전제 확인
+  ansible.builtin.assert:
+    that:
+      - kubernetes_node_platform in ['aws', 'gcp', 'onp']
+      - tailscale_ipv4 is defined
+      - ansible_facts.hostname is match('^cntlp-(aws|gcp|onp)-(cp|wk)-[0-9]{2}$')
+
+- name: AWS IMDSv2 token 조회
+  ansible.builtin.uri:
+    url: http://169.254.169.254/latest/api/token
+    method: PUT
+    headers:
+      X-aws-ec2-metadata-token-ttl-seconds: "60"
+    return_content: true
+    use_proxy: false
+  register: aws_imds_token
+  when: kubernetes_node_platform == 'aws'
+  no_log: true
+
+- name: AWS 인스턴스 metadata 조회
+  ansible.builtin.uri:
+    url: "http://169.254.169.254/latest/meta-data/{{ item.path }}"
+    headers:
+      X-aws-ec2-metadata-token: "{{ aws_imds_token.content }}"
+    return_content: true
+    use_proxy: false
+  loop:
+    - { key: instance_id, path: instance-id }
+    - { key: instance_type, path: instance-type }
+    - { key: zone, path: placement/availability-zone }
+    - { key: region, path: placement/region }
+  register: aws_node_metadata
+  when: kubernetes_node_platform == 'aws'
+
+- name: AWS Kubernetes metadata 계산
+  ansible.builtin.set_fact:
+    kubernetes_node_provider_id: "aws:///{{ (aws_node_metadata.results | selectattr('item.key', 'equalto', 'zone') | first).content }}/{{ (aws_node_metadata.results | selectattr('item.key', 'equalto', 'instance_id') | first).content }}"
+    kubernetes_node_instance_type: "{{ (aws_node_metadata.results | selectattr('item.key', 'equalto', 'instance_type') | first).content }}"
+    kubernetes_node_region: "{{ (aws_node_metadata.results | selectattr('item.key', 'equalto', 'region') | first).content }}"
+    kubernetes_node_zone: "{{ (aws_node_metadata.results | selectattr('item.key', 'equalto', 'zone') | first).content }}"
+  when: kubernetes_node_platform == 'aws'
+
+- name: GCP 인스턴스 metadata 조회
+  ansible.builtin.uri:
+    url: "http://metadata.google.internal/computeMetadata/v1/{{ item.path }}"
+    headers:
+      Metadata-Flavor: Google
+    return_content: true
+    use_proxy: false
+  loop:
+    - { key: project, path: project/project-id }
+    - { key: instance_name, path: instance/name }
+    - { key: instance_type, path: instance/machine-type }
+    - { key: zone, path: instance/zone }
+  register: gcp_node_metadata
+  when: kubernetes_node_platform == 'gcp'
+
+- name: GCP Kubernetes metadata 계산
+  ansible.builtin.set_fact:
+    kubernetes_node_provider_id: "gce://{{ (gcp_node_metadata.results | selectattr('item.key', 'equalto', 'project') | first).content }}/{{ ((gcp_node_metadata.results | selectattr('item.key', 'equalto', 'zone') | first).content).split('/') | last }}/{{ (gcp_node_metadata.results | selectattr('item.key', 'equalto', 'instance_name') | first).content }}"
+    kubernetes_node_instance_type: "{{ ((gcp_node_metadata.results | selectattr('item.key', 'equalto', 'instance_type') | first).content).split('/') | last }}"
+    kubernetes_node_zone: "{{ ((gcp_node_metadata.results | selectattr('item.key', 'equalto', 'zone') | first).content).split('/') | last }}"
+    kubernetes_node_region: "{{ (((gcp_node_metadata.results | selectattr('item.key', 'equalto', 'zone') | first).content).split('/') | last) | regex_replace('-[a-z]$', '')) }}"
+  when: kubernetes_node_platform == 'gcp'
+
+- name: On-premise Kubernetes metadata 계산
+  ansible.builtin.set_fact:
+    kubernetes_node_provider_id: "custom:///{{ ansible_facts.hostname }}"
+    kubernetes_node_instance_type: "custom-{{ ansible_facts.processor_vcpus }}vcpu-{{ (ansible_facts.memtotal_mb / 1024) | round(0, 'ceil') | int }}gib"
+    kubernetes_node_region: "{{ kubernetes_node_metadata_onprem_region }}"
+    kubernetes_node_zone: "{{ kubernetes_node_metadata_onprem_zone }}"
+  when: kubernetes_node_platform == 'onp'
+
+- name: 계산된 Node metadata 검증
+  ansible.builtin.assert:
+    that:
+      - kubernetes_node_provider_id is match('^[a-z]+://.+')
+      - kubernetes_node_instance_type | length > 0
+      - kubernetes_node_region | length > 0
+      - kubernetes_node_zone | length > 0
+
+# Do not restart kubelet here. The API object is patched below and the durable
+# flag takes effect on the next normal kubelet restart without disrupting pods.
+- name: kubelet providerID 영구 설정
+  ansible.builtin.lineinfile:
+    path: /etc/default/kubelet
+    regexp: '^KUBELET_EXTRA_ARGS='
+    line: "KUBELET_EXTRA_ARGS=--node-ip={{ tailscale_ipv4 }} --provider-id={{ kubernetes_node_provider_id }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: 현재 Kubernetes Node providerID 조회
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - get
+      - node
+      - "{{ ansible_facts.hostname }}"
+      - '-o=jsonpath={.spec.providerID}'
+  delegate_to: "{{ groups['role_control_plane'][0] }}"
+  register: current_node_provider_id
+  changed_when: false
+  check_mode: false
+
+- name: Kubernetes Node providerID 적용
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - patch
+      - node
+      - "{{ ansible_facts.hostname }}"
+      - --type=merge
+      - '-p={"spec":{"providerID":"{{ kubernetes_node_provider_id }}"}}'
+  delegate_to: "{{ groups['role_control_plane'][0] }}"
+  when: current_node_provider_id.stdout | trim != kubernetes_node_provider_id
+  register: node_provider_patch
+  changed_when: true
+
+- name: Kubernetes Node 표준 topology와 instance label 적용
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - "{{ kubernetes_admin_conf }}"
+      - label
+      - node
+      - "{{ ansible_facts.hostname }}"
+      - "node.kubernetes.io/instance-type={{ kubernetes_node_instance_type }}"
+      - "topology.kubernetes.io/region={{ kubernetes_node_region }}"
+      - "topology.kubernetes.io/zone={{ kubernetes_node_zone }}"
+      - --overwrite
+  delegate_to: "{{ groups['role_control_plane'][0] }}"
+  register: node_metadata_labels
+  changed_when: "'not labeled' not in node_metadata_labels.stdout"

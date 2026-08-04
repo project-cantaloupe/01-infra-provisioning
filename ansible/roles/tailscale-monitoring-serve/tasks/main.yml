@@ -35,6 +35,7 @@
       loop:
         - "{{ tailscale_monitoring_opencost_check_url }}"
         - "{{ tailscale_monitoring_grafana_check_url }}"
+        - "{{ tailscale_monitoring_prometheus_check_url }}"
       register: tailscale_monitoring_backend_checks
       retries: 12
       delay: 5
@@ -75,6 +76,20 @@
         - tailscale_monitoring_grafana_backend_url not in tailscale_monitoring_serve_before.stdout
       changed_when: true
 
+    - name: Prometheus HTTPS 서브경로 프록시 구성
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - serve
+          - --bg
+          - "--https={{ tailscale_monitoring_serve_https_port }}"
+          - "--set-path={{ tailscale_monitoring_prometheus_path }}"
+          - "{{ tailscale_monitoring_prometheus_backend_url }}"
+      when:
+        - not ansible_check_mode
+        - tailscale_monitoring_prometheus_backend_url not in tailscale_monitoring_serve_before.stdout
+      changed_when: true
+
     - name: 적용된 Tailscale Serve 설정 조회
       ansible.builtin.command: tailscale serve status --json
       register: tailscale_monitoring_serve_after
@@ -87,6 +102,8 @@
           - tailscale_monitoring_opencost_backend_url in tailscale_monitoring_serve_after.stdout
           - tailscale_monitoring_grafana_backend_url in tailscale_monitoring_serve_after.stdout
           - tailscale_monitoring_grafana_path in tailscale_monitoring_serve_after.stdout
+          - tailscale_monitoring_prometheus_backend_url in tailscale_monitoring_serve_after.stdout
+          - tailscale_monitoring_prometheus_path in tailscale_monitoring_serve_after.stdout
         fail_msg: Monitoring Tailscale Serve 설정을 확인하세요.
       when: not ansible_check_mode
 
@@ -95,3 +112,4 @@
         msg:
           - "OpenCost: https://{{ tailscale_monitoring_serve_expected_dns_name }}/"
           - "Grafana: https://{{ tailscale_monitoring_serve_expected_dns_name }}{{ tailscale_monitoring_grafana_path }}/"
+          - "Prometheus: https://{{ tailscale_monitoring_serve_expected_dns_name }}{{ tailscale_monitoring_prometheus_path }}/"

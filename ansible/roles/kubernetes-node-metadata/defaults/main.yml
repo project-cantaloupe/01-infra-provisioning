@@ -1,0 +1,6 @@
+---
+kubernetes_node_platform: >-
+  {{ (group_names | select('match', '^platform_') | first | default(''))
+     | replace('platform_', '') }}
+kubernetes_node_metadata_onprem_region: on-premise
+kubernetes_node_metadata_onprem_zone: local

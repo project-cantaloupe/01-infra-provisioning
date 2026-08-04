@@ -6,6 +6,14 @@ tailscale_monitoring_serve_expected_dns_name: ""
 tailscale_monitoring_opencost_backend_url: http://127.0.0.1:30990
 tailscale_monitoring_opencost_check_url: http://127.0.0.1:30990/healthz
 
+# The stock OpenCost UI image is built for /. A clean /opencost mount needs a
+# separately built ui_path image, so keep OpenCost on the root instead of
+# publishing a misleading sub-path whose links escape back to /.
+
+tailscale_monitoring_prometheus_path: /prometheus
+tailscale_monitoring_prometheus_backend_url: http://127.0.0.1:30909
+tailscale_monitoring_prometheus_check_url: http://127.0.0.1:30909/-/ready
+
 # Tailscale Serve removes the matched /grafana prefix before proxying. Include
 # it in the backend target so Grafana receives the sub-path configured in
 # grafana.ini.
