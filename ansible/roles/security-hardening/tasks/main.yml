@@ -105,7 +105,7 @@
         port: "22"
         proto: tcp
         src: "{{ item }}"
-      loop: "{{ security_ssh_allow_from }}"
+      loop: "{{ security_ssh_allow_from + security_ssh_allow_from_extra }}"
 
     # Tailscale 이 직접 연결(P2P)을 맺을 때 쓰는 포트.
     # 막히면 조용히 DERP 릴레이로 폴백해서 "되긴 되는데 느린" 상태가 된다.

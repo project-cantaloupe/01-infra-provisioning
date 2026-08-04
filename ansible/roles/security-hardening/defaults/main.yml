@@ -10,6 +10,23 @@ security_ssh_allow_from:
   - 192.168.0.0/16
   - 100.64.0.0/10 # Tailscale CGNAT 대역
 
+# 플랫폼마다 더 열어야 하는 대역. 위 목록은 어디서나 같고, 여기는 갈린다.
+#
+# **이게 없으면 메시가 죽는 순간 노드가 고립된다.** 위 목록은 사설 대역과
+# tailnet 뿐이라, 클라우드가 제공하는 out-of-band 접속 경로가 전부 빠져 있다.
+# ufw 를 켜는 순간 그 경로가 닫히고, 남는 것은 메시 하나다 — 그런데 메시가
+# 끊겼을 때 쓰려고 있는 것이 out-of-band 경로다.
+#
+# 2026-08-04 에 실제로 그 상황을 겪었다. GCP 워커 2대가 Cloud NAT 외부 IP
+# 교체로 tailnet 에서 동시에 떨어졌고, 그때 노드를 들여다본 유일한 경로가
+# 콘솔이었다. 당시 그 노드들은 ufw 가 꺼져 있어서 살았다.
+# → tasks/todo/009_node-access-paths.md
+#
+# 값은 인벤토리 group_vars 가 정한다 (inventories/gcp/group_vars/platform_gcp.yml).
+# 롤 기본값을 비워두는 이유는 대역이 플랫폼 사실이라서다 — AWS 노드에
+# GCP IAP 대역을 열어봤자 뜻이 없다.
+security_ssh_allow_from_extra: []
+
 # 메시 인터페이스. 이 인터페이스로 들어오는 것은 통째로 허용한다.
 # 클러스터 내부 통신(kubelet 10250, NodePort, CNI)이 전부 여기를 탄다.
 security_mesh_interface: tailscale0
