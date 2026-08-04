@@ -25,6 +25,27 @@ security_ssh_allow_from:
 # 값은 인벤토리 group_vars 가 정한다 (inventories/gcp/group_vars/platform_gcp.yml).
 # 롤 기본값을 비워두는 이유는 대역이 플랫폼 사실이라서다 — AWS 노드에
 # GCP IAP 대역을 열어봤자 뜻이 없다.
+#
+# ── 왜 GCP 만 채워져 있나 (2026-08-04 전수 확인) ──────────────
+#
+# 세 영역의 out-of-band 경로가 방화벽에서 다르게 보인다.
+#
+#   AWS    EIC + EICE     출발지 10.20.10.x  → 위 10.0.0.0/8 이 이미 덮는다
+#   온프렘  LAN · Proxmox  출발지 192.168.0.x → 위 192.168.0.0/16 이 덮는다
+#   GCP    IAP 터널        출발지 35.235.240.0/20 → **RFC1918 이 아니다**
+#
+# **EICE 는 네 VPC 서브넷 안에 ENI 를 만들어 사설 IP 로 접속한다.** 그래서
+# 사설 대역 규칙에 자연히 걸린다. 반면 GCP IAP 는 구글 인프라에서 공인
+# 대역으로 들어온다 — 사설 대역을 아무리 열어도 안 걸린다. 이 구조 차이가
+# GCP 만 따로 채워야 하는 이유의 전부다.
+#
+# AWS 노드 둘 다 공인 IP 가 없다(IMDS public-ipv4 → 404). 공인 대역에서 오는
+# 직접 EIC 는 불가능하고 EICE 만이 경로다. `cntlp-aws-wk-01` 이 ufw active
+# 인 채로 EIC 가 되던 것이 실증이다.
+#
+# **아직 확인 못 한 것** — EC2 Serial Console 은 방화벽 밖의 진짜 out-of-band
+# 인데, 계정 수준 활성화와 IAM 이 필요하다. AWS 자격증명이 없어 확인하지
+# 못했다. 메시도 EICE 도 죽은 상황의 마지막 수단이라 언젠가 확인해야 한다.
 security_ssh_allow_from_extra: []
 
 # 메시 인터페이스. 이 인터페이스로 들어오는 것은 통째로 허용한다.
