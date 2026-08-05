@@ -1,0 +1,42 @@
+# RDS가 `manage_master_user_password`로 Secrets Manager에 관리하는 자격증명을
+# Kubernetes Workload가 읽어야 한다. Node Instance Profile 경로에서는 Compute
+# Stack이 소유한 Worker Role에 이 권한을 붙인다.
+#
+# 각 Stack이 자기 자원의 권한을 소유하는 경계를 유지한다. Audio Stack이 S3·SQS
+# 권한을 붙이듯, Database Stack이 자기 Secret 권한을 붙인다.
+#
+# 권한 격리 단위가 ServiceAccount가 아니라 Node라는 한계가 있다. 같은 Node에서
+# IMDS에 접근 가능한 Pod는 이 Secret을 읽을 수 있다. Calico NetworkPolicy로
+# 불필요한 Pod의 IMDS Egress를 차단해 보완한다. 운영 환경에서는 OIDC 기반
+# Workload IAM과 앱 전용 DB 사용자로 전환한다.
+data "terraform_remote_state" "compute" {
+  count = var.enable_node_role_policy ? 1 : 0
+
+  backend = "s3"
+
+  config = {
+    bucket  = "cntlp-aws-tfstate"
+    key     = "aws/compute/terraform.tfstate"
+    region  = var.aws_region
+    encrypt = true
+  }
+}
+
+data "aws_iam_policy_document" "database_node" {
+  count = var.enable_node_role_policy ? 1 : 0
+
+  statement {
+    sid       = "ReadDatabaseMasterCredentials"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_db_instance.api.master_user_secret[0].secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "database_node" {
+  count = var.enable_node_role_policy ? 1 : 0
+
+  name   = "${local.name_prefix}-database-node"
+  role   = data.terraform_remote_state.compute[0].outputs.worker_role_name
+  policy = data.aws_iam_policy_document.database_node[0].json
+}

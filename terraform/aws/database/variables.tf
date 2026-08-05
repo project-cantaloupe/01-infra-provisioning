@@ -127,3 +127,12 @@ variable "final_snapshot_identifier" {
     error_message = "final_snapshot_identifier must use lowercase letters, digits, and hyphens."
   }
 }
+
+# Workload IAM(OIDC) 대신 Node Instance Profile을 쓰는 동안, RDS master 자격증명
+# Secret 읽기 권한을 Compute Stack의 Worker Role에 붙일지 결정한다. 권한 격리
+# 단위가 ServiceAccount가 아니라 Node가 되는 한계가 있다.
+variable "enable_node_role_policy" {
+  description = "Whether to grant the compute worker node role read access to the RDS master credentials secret"
+  type        = bool
+  default     = false
+}
