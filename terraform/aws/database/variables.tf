@@ -136,3 +136,12 @@ variable "enable_node_role_policy" {
   type        = bool
   default     = false
 }
+
+# Control Plane Node가 Kubernetes Secret을 만들 때 RDS 비밀번호를 읽도록 할지
+# 결정한다. Control Plane은 admin.conf로 이미 모든 Kubernetes Secret을 읽을 수
+# 있으므로 노출 범위가 실질적으로 넓어지지 않는다.
+variable "enable_control_plane_role_policy" {
+  description = "Whether to grant the control plane node role read access to the RDS master credentials secret"
+  type        = bool
+  default     = false
+}

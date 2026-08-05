@@ -50,3 +50,47 @@ resource "aws_iam_instance_profile" "worker" {
     role = "service"
   }
 }
+
+# Control Plane Node는 Cluster 운영 주체이며 admin.conf를 갖고 있다. 즉 이미
+# 모든 Kubernetes Secret을 읽을 수 있다. Kubernetes Secret을 만들 때 필요한
+# 최소 조회 권한을 여기에 붙여도 노출 범위가 실질적으로 넓어지지 않는다.
+#
+# Worker Role과 마찬가지로 이 Role 자체에는 권한을 넣지 않는다. 각 Stack이
+# 자기 자원 범위에 맞춰 Policy를 붙인다.
+data "aws_iam_policy_document" "control_plane_assume_role" {
+  count = var.enable_control_plane_instance_profile ? 1 : 0
+
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "control_plane" {
+  count = var.enable_control_plane_instance_profile ? 1 : 0
+
+  name               = local.control_plane_role_name
+  assume_role_policy = data.aws_iam_policy_document.control_plane_assume_role[0].json
+
+  tags = {
+    Name = local.control_plane_role_name
+    role = "control-plane"
+  }
+}
+
+resource "aws_iam_instance_profile" "control_plane" {
+  count = var.enable_control_plane_instance_profile ? 1 : 0
+
+  name = local.control_plane_role_name
+  role = aws_iam_role.control_plane[0].name
+
+  tags = {
+    Name = local.control_plane_role_name
+    role = "control-plane"
+  }
+}

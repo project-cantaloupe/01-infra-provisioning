@@ -25,6 +25,10 @@ resource "aws_instance" "control_plane" {
   # Control Plane은 인터넷에 직접 노출하지 않는다.
   associate_public_ip_address = false
 
+  # Cluster 운영에 필요한 최소 조회 권한을 IMDS로 받는다. Role 자체에는 권한이
+  # 없고 각 Stack이 자기 자원 범위만 붙인다.
+  iam_instance_profile = var.enable_control_plane_instance_profile ? aws_iam_instance_profile.control_plane[0].name : null
+
   # 현재 AWS 상태가 false이나 코드에 없어 apply 시 기본값 true로 되돌아가는
   # 드리프트가 있었다. 누가 왜 껐는지 기록이 없어 현재 상태를 그대로 고정한다.
   #
