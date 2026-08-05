@@ -1,5 +1,31 @@
 plugin: google.cloud.gcp_compute
-projects: ["{{ lookup('env', 'GCP_PROJECT') }}"]
+
+# **`projects` 는 템플릿도 env 도 안 된다.** 플러그인 옵션 명세에 `env` 가
+# 없고 인벤토리 플러그인이 이 값을 Jinja 로 렌더링하지도 않는다. 한때 여기
+# `{{ lookup('env', 'GCP_PROJECT') }}` 이 있었는데, 그 문자열이 **그대로**
+# 프로젝트 이름으로 나가서 이렇게 죽었다 (2026-08-05):
+#
+#   Permission denied on resource project {{ lookup('env', 'GCP_PROJECT') }}.
+#
+# 자격증명 문제로 읽히지만 아니다 — 존재하지 않는 프로젝트를 물어본 것이다.
+# 그래서 리터럴로 박는다. 프로젝트 ID 는 비밀이 아니고
+# terraform/gcp/terraform.tfvars.example 에도 이미 있다.
+# aws_ec2.yaml 이 리전과 태그를 박아두는 것과 같은 자리다.
+projects: ["project-1a3248ab-0082-49b3-878"]
+
+# ── 자격증명은 환경변수로 받는다 ────────────────────────────────
+#
+# 이 파일에 키를 적지 않는다. 플러그인이 읽는 값은 셋이다.
+#
+#   GCP_AUTH_KIND=serviceaccount
+#   GCP_SERVICE_ACCOUNT_CONTENTS   키 JSON 을 **내용 그대로**   ← 이쪽을 쓴다
+#   GCP_SERVICE_ACCOUNT_FILE       키 파일 경로                 ← 사본이 하나 는다
+#
+# **CONTENTS 를 쓰면 디스크에 평문 사본이 안 생긴다.** SSH 개인키를 파일이
+# 아니라 ssh-agent 메모리로만 넣는 것과 같은 원칙이다
+# → decisions/20260731_secret-access-no-fallback.md
+# scripts/cntlp-env.sh 가 Vault 에서 읽어 export 한다.
+
 filters: ["status = RUNNING"]
 
 # 인벤토리 호스트명을 인스턴스 이름으로 고정한다.
