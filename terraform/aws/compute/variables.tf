@@ -91,3 +91,12 @@ variable "enable_worker_instance_profile" {
   type        = bool
   default     = false
 }
+
+# Control Plane Node에서 Kubernetes Secret을 만들 때 필요한 최소 조회 권한을
+# IMDS로 받게 할지 결정한다. Control Plane은 이미 admin.conf로 모든 Kubernetes
+# Secret을 읽을 수 있으므로 노출 범위가 실질적으로 넓어지지 않는다.
+variable "enable_control_plane_instance_profile" {
+  description = "Whether to attach an IAM instance profile to the control plane node"
+  type        = bool
+  default     = false
+}

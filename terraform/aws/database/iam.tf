@@ -10,7 +10,7 @@
 # 불필요한 Pod의 IMDS Egress를 차단해 보완한다. 운영 환경에서는 OIDC 기반
 # Workload IAM과 앱 전용 DB 사용자로 전환한다.
 data "terraform_remote_state" "compute" {
-  count = var.enable_node_role_policy ? 1 : 0
+  count = var.enable_node_role_policy || var.enable_control_plane_role_policy ? 1 : 0
 
   backend = "s3"
 
@@ -39,4 +39,26 @@ resource "aws_iam_role_policy" "database_node" {
   name   = "${local.name_prefix}-database-node"
   role   = data.terraform_remote_state.compute[0].outputs.worker_role_name
   policy = data.aws_iam_policy_document.database_node[0].json
+}
+
+# Control Plane Node는 Kubernetes Secret을 만들 때 RDS 비밀번호를 읽어야 한다.
+# admin.conf로 이미 모든 Kubernetes Secret을 읽을 수 있으므로 이 권한이 노출
+# 범위를 넓히지 않는다. 대상 ARN 하나에 액션 하나만 준다.
+data "aws_iam_policy_document" "database_control_plane" {
+  count = var.enable_control_plane_role_policy ? 1 : 0
+
+  statement {
+    sid       = "ReadDatabaseMasterCredentials"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_db_instance.api.master_user_secret[0].secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "database_control_plane" {
+  count = var.enable_control_plane_role_policy ? 1 : 0
+
+  name   = "${local.name_prefix}-database-control-plane"
+  role   = data.terraform_remote_state.compute[0].outputs.control_plane_role_name
+  policy = data.aws_iam_policy_document.database_control_plane[0].json
 }
