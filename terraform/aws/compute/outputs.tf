@@ -41,3 +41,13 @@ output "worker_node_metadata" {
     }
   ]
 }
+
+output "worker_role_name" {
+  description = "IAM role name attached to service worker nodes when enabled"
+  value       = var.enable_worker_instance_profile ? aws_iam_role.worker[0].name : null
+}
+
+output "worker_role_arn" {
+  description = "IAM role ARN attached to service worker nodes when enabled"
+  value       = var.enable_worker_instance_profile ? aws_iam_role.worker[0].arn : null
+}

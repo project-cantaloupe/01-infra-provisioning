@@ -52,7 +52,7 @@ resource "aws_iam_role" "workload" {
 }
 
 data "aws_iam_policy_document" "audio_api" {
-  count = var.enable_workload_iam ? 1 : 0
+  count = local.build_audio_policies ? 1 : 0
 
   statement {
     sid       = "ReadQuarantineBucketMetadata"
@@ -115,7 +115,7 @@ resource "aws_iam_role_policy" "audio_api" {
 }
 
 data "aws_iam_policy_document" "audio_events" {
-  count = var.enable_workload_iam ? 1 : 0
+  count = local.build_audio_policies ? 1 : 0
 
   statement {
     sid    = "ConsumeAudioResults"
@@ -150,7 +150,7 @@ resource "aws_iam_role_policy" "audio_events" {
 }
 
 data "aws_iam_policy_document" "audio_transcode" {
-  count = var.enable_workload_iam ? 1 : 0
+  count = local.build_audio_policies ? 1 : 0
 
   statement {
     sid    = "ConsumeTranscodeJobs"
@@ -219,4 +219,27 @@ resource "aws_iam_role_policy" "audio_transcode" {
   name   = "${local.name_prefix}-transcode"
   role   = aws_iam_role.workload["transcode"].id
   policy = data.aws_iam_policy_document.audio_transcode[0].json
+}
+
+# Node Instance Profile 경로에서는 세 ServiceAccount 권한의 합집합을 Compute
+# Stack의 Worker Role에 붙인다. 같은 Node에서 IMDS에 접근 가능한 Pod는 이 권한을
+# 모두 사용할 수 있으므로 격리 단위가 ServiceAccount가 아니라 Node다. Calico
+# NetworkPolicy로 불필요한 Pod의 IMDS Egress를 차단해 보완하지만 Pod별 IAM
+# 격리를 대체하지는 않는다.
+data "aws_iam_policy_document" "audio_node" {
+  count = var.enable_node_role_policy ? 1 : 0
+
+  source_policy_documents = [
+    data.aws_iam_policy_document.audio_api[0].json,
+    data.aws_iam_policy_document.audio_events[0].json,
+    data.aws_iam_policy_document.audio_transcode[0].json,
+  ]
+}
+
+resource "aws_iam_role_policy" "audio_node" {
+  count = var.enable_node_role_policy ? 1 : 0
+
+  name   = "${local.name_prefix}-audio-node"
+  role   = data.terraform_remote_state.compute[0].outputs.worker_role_name
+  policy = data.aws_iam_policy_document.audio_node[0].json
 }

@@ -26,6 +26,10 @@ locals {
 
   cloudfront_origin_id = "${local.name_prefix}-transcode-s3"
 
+  # ServiceAccount별 Role과 Node Instance Profile은 같은 최소 권한 정의를
+  # 공유한다. 어느 경로를 쓰든 Policy Document는 만들어져야 한다.
+  build_audio_policies = var.enable_workload_iam || var.enable_node_role_policy
+
   default_tags = {
     org          = local.org_token
     owner        = var.owner
