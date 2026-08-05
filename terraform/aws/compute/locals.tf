@@ -11,6 +11,9 @@ locals {
     format("%s-wk-%02d", local.name_prefix, index + 1)
   ]
 
+  # Service Worker Node에 붙일 Instance Profile과 Role의 공통 이름이다.
+  worker_role_name = "${local.name_prefix}-worker-node"
+
   # 모든 AWS 자원에 Provider default_tags로 적용할 필수 태그다.
   # Name과 role처럼 노드별로 달라지는 태그는 각 resource 블록에서 추가한다.
   default_tags = {
