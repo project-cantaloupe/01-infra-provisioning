@@ -241,7 +241,7 @@ check_apt_keyrings() {
        AWS 컨트롤플레인이 서야 쓸 수 있으므로(SKIP_KUBECTL 기본값 1) 지금은
        빼는 쪽이 맞다.
          sudo rm -f /etc/apt/sources.list.d/kubernetes.list \\
-                    /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+                    /etc/apt/keyrings/kubernetes-apt-keyring.asc
          sudo apt-get update
 
        지금 쓴다면 0바이트 keyring 만 지우고 그 도구의 설치를 다시 돌린다.
@@ -357,13 +357,30 @@ install_ansible() {
 
   if (( WITH_CLOUD_INVENTORY )); then
     step "ansible — AWS·GCP 인벤토리 의존성"
-    apt_install python3-boto3 python3-requests-oauthlib
+    # **google.cloud 컬렉션만으로는 GCP 인벤토리가 안 돈다.** 그 플러그인은
+    # google-auth 와 requests 를 시스템 파이썬에서 import 한다. 없으면 이렇게
+    # 죽는데, 에러 문구가 자격증명 문제처럼 읽혀 엉뚱한 데를 판다:
+    #
+    #   required library is installed, but Ansible is using the wrong
+    #   Python interpreter, please consult the documentation on
+    #   ansible_python_interpreter
+    #
+    # 실제로는 인터프리터가 틀린 게 아니라 **그 인터프리터에 라이브러리가
+    # 없는 것**이다. AWS 쪽(boto3)은 깔면서 GCP 쪽만 빠져 있었다 (2026-08-05).
+    apt_install python3-boto3 python3-requests-oauthlib \
+                python3-google-auth python3-requests
     if (( DRY_RUN )); then
       printf '%s  would run: ansible-galaxy collection install amazon.aws google.cloud%s\n' "$C_DIM" "$C_OFF"
     else
       ansible-galaxy collection install amazon.aws google.cloud
     fi
     ok "클라우드 인벤토리 의존성 설치 완료"
+
+    # proxmoxer 와 같은 이유로 import 를 직접 확인한다. 컬렉션이 있어도
+    # 라이브러리가 없으면 인벤토리 파싱 단계에서 죽는다.
+    if (( ! DRY_RUN )) && ! python3 -c 'import google.auth' 2>/dev/null; then
+      warn "google.auth 를 import 하지 못한다. GCP 인벤토리가 파싱 단계에서 죽는다."
+    fi
   fi
 }
 
@@ -478,7 +495,7 @@ install_kubectl() {
 
   run sudo mkdir -p -m 755 /etc/apt/keyrings
 
-  local keyring=/etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  local keyring=/etc/apt/keyrings/kubernetes-apt-keyring.asc
   install_keyring \
     "https://pkgs.k8s.io/core:/stable:/${K8S_MINOR}/deb/Release.key" \
     "$keyring" "Kubernetes"
