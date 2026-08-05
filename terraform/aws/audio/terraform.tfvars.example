@@ -1,0 +1,30 @@
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+
+owner      = "team-audio"
+data_class = "user-audio"
+
+# 실제 웹 Origin으로 교체한다. 경로와 마지막 /는 넣지 않는다.
+web_allowed_origins = ["https://audio.example.com"]
+
+# 128 KB 초과 원본은 30일 뒤 Standard-IA, 60일 뒤 Glacier Instant Retrieval로 이동한다.
+quarantine_standard_ia_transition_days = 30
+quarantine_glacier_ir_transition_days  = 60
+noncurrent_version_retention_days      = 7
+queue_max_receive_count                = 3
+
+# 비용이 발생하는 구성은 plan을 확인한 뒤 단계별로 활성화한다.
+# 공개키 파일을 만든 뒤 두 값을 함께 활성화한다.
+enable_cloudfront             = false
+cloudfront_public_key_path    = null
+cloudfront_price_class        = "PriceClass_200"
+
+# Self-managed Kubernetes OIDC Provider를 준비한 뒤 활성화한다.
+enable_workload_iam           = false
+cluster_oidc_provider_arn     = null
+cluster_oidc_issuer_url       = null
+
+audio_namespace                 = "apps"
+audio_api_service_account       = "audio-api"
+audio_events_service_account    = "audio-events"
+audio_transcode_service_account = "audio-transcode"
