@@ -13,18 +13,30 @@ plugin: google.cloud.gcp_compute
 # aws_ec2.yaml 이 리전과 태그를 박아두는 것과 같은 자리다.
 projects: ["project-1a3248ab-0082-49b3-878"]
 
-# ── 자격증명은 환경변수로 받는다 ────────────────────────────────
+# 인증 방식. **비밀이 아니라 모드 선택자다.**
 #
-# 이 파일에 키를 적지 않는다. 플러그인이 읽는 값은 셋이다.
+# 한때 `GCP_AUTH_KIND` 환경변수로만 넘겼는데, 그러면 셸이 바뀔 때마다 이렇게
+# 죽는다 (2026-08-05 실측):
 #
-#   GCP_AUTH_KIND=serviceaccount
+#   No setting was provided for required configuration
+#   plugin: gcp_compute setting: auth_kind
+#
+# 비밀만 환경변수로 두고 나머지는 파일에 박는다. **환경변수는 프로세스와
+# 함께 사라지므로, 거기 담긴 값은 전부 「매번 다시 넣어야 하는 것」이 된다.**
+# 그 비용은 비밀에만 지불한다.
+auth_kind: serviceaccount
+
+# ── 키 자체는 환경변수로만 받는다 ───────────────────────────────
+#
+# 이 파일에 키를 적지 않는다. 플러그인이 읽는 값은 둘 중 하나다.
+#
 #   GCP_SERVICE_ACCOUNT_CONTENTS   키 JSON 을 **내용 그대로**   ← 이쪽을 쓴다
 #   GCP_SERVICE_ACCOUNT_FILE       키 파일 경로                 ← 사본이 하나 는다
 #
 # **CONTENTS 를 쓰면 디스크에 평문 사본이 안 생긴다.** SSH 개인키를 파일이
 # 아니라 ssh-agent 메모리로만 넣는 것과 같은 원칙이다
 # → decisions/20260731_secret-access-no-fallback.md
-# scripts/cntlp-env.sh 가 Vault 에서 읽어 export 한다.
+# scripts/cntlp-env.sh 가 Vault 에서 읽어 export 한다 (011 이 배선한다).
 
 filters: ["status = RUNNING"]
 
