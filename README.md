@@ -21,6 +21,10 @@ terraform -chdir=terraform/aws/database apply
 # 2. 별도 명령으로 K8s 클러스터를 구성한다
 cd ansible
 ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-cluster.yaml
+
+# 3. Istio ingress gateway가 준비된 뒤 Public NLB를 만든다
+terraform -chdir=terraform/aws/edge init -reconfigure
+terraform -chdir=terraform/aws/edge apply
 ```
 
 Terraform과 Ansible은 서로를 호출하지 않는다. Ansible은 Tailscale 가입,
@@ -51,6 +55,7 @@ terraform/
   aws/egress/    독립 생성·삭제하는 NAT Gateway
   aws/compute/   Control Plane과 Worker EC2
   aws/database/  애플리케이션용 PostgreSQL RDS
+  aws/edge/      Public NLB, Target Group, DNS, cert-manager IAM
   gcp/           향후 GCP Worker
   onp/           온프렘 Proxmox Worker
 ansible/
@@ -78,7 +83,7 @@ AWS·GCP의 공통 관리 태그는 `org`, `owner`, `managed-by`, `lifecycle`,
 
 ## Terraform 상태는 S3 에 둔다
 
-AWS의 Network, Egress, Compute, Database와 GCP, On-Prem 상태는 S3 backend의
+AWS의 Network, Egress, Compute, Database, Edge와 GCP, On-Prem 상태는 S3 backend의
 서로 다른 키에 저장한다.
 
 ## 클러스터 안쪽 거버넌스는 여기 없다
