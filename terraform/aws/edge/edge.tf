@@ -41,16 +41,38 @@ resource "aws_lb_target_group" "http" {
   }
 }
 
-# TCP listener만 사용해 TLS 종료 지점을 Istio Gateway로 유지한다.
-#
-# 443 listener는 두지 않는다. audio-gateway의 server 블록이 HTTP 80 하나뿐이라
-# Envoy가 443을 바인딩하지 않고, Health Check는 32021을 보므로 Target이
-# healthy로 보이는 채 443만 조용히 끊긴다. Gateway에 TLS server와 인증서가
-# 생기면 그때 listener와 Target Group을 함께 추가한다.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.audio.arn
   port              = 80
   protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.http.arn
+  }
+}
+
+# TLS를 Istio Gateway가 아니라 NLB에서 종료한다.
+#
+# 원래 설계는 Gateway 종료였다. 그 경로는 cert-manager DNS-01을 쓰는데,
+# terraform/aws/edge의 cert_manager IAM이 cluster_oidc_provider_arn을 요구한다.
+# 이 클러스터에는 IAM OIDC Provider가 없고, Workload IAM 대신 Node Instance
+# Profile을 쓰기로 한 결정(enable_workload_iam = false)을 되돌리지 않는 한
+# 그 전제를 만족시킬 수 없다.
+#
+# ACM은 무료이고 자동 갱신되며 클러스터에 아무것도 설치하지 않는다. NLB와
+# Worker 사이 구간은 VPC 내부이고 Security Group으로 NLB에서 온 트래픽만
+# 받는다. Gateway에 TLS server와 인증서를 넣게 되면 이 listener를 TCP
+# passthrough로 되돌린다.
+resource "aws_lb_listener" "https" {
+  count = var.enable_tls ? 1 : 0
+
+  load_balancer_arn = aws_lb.audio.arn
+  port              = 443
+  protocol          = "TLS"
+  certificate_arn   = aws_acm_certificate_validation.audio[0].certificate_arn
+  ssl_policy        = var.tls_ssl_policy
+  alpn_policy       = "HTTP2Optional"
 
   default_action {
     type             = "forward"

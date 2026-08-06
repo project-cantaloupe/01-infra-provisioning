@@ -82,6 +82,32 @@ variable "audio_ingress_health_node_port" {
   }
 }
 
+# TLS는 도메인이 Route53 Zone으로 위임된 뒤에만 켤 수 있다. ACM DNS 검증이
+# 공개 인터넷에서 해석되는 레코드를 요구하기 때문이다.
+variable "enable_tls" {
+  description = "Whether to terminate TLS at the NLB with an ACM certificate"
+  type        = bool
+  default     = false
+
+  # 인증서는 public_host로 발급되고 검증 레코드는 route53_zone_id에 만들어진다.
+  # A 레코드가 없으면 인증서만 발급된 채 그 이름으로 접속할 수 없다.
+  # check 블록은 경고에 그치므로 여기서 apply를 막는다.
+  validation {
+    condition = (
+      !var.enable_tls
+      || (var.route53_zone_id != null && var.public_host != null && var.create_dns_record)
+    )
+    error_message = "enable_tls requires route53_zone_id, public_host, and create_dns_record."
+  }
+}
+
+# NLB TLS listener가 지원하는 정책 중 TLS 1.2 이상만 허용하는 값이다.
+variable "tls_ssl_policy" {
+  description = "SSL negotiation policy for the NLB TLS listener"
+  type        = string
+  default     = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+}
+
 # PoC 삭제 시 NLB가 남지 않도록 기본값은 비활성화한다.
 variable "enable_deletion_protection" {
   description = "Whether deletion protection is enabled on the NLB"

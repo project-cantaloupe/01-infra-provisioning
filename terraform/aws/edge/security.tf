@@ -9,10 +9,10 @@ resource "aws_security_group" "audio_nlb" {
   }
 }
 
-# Gateway에 TLS server가 없어 요청이 평문 HTTP로 오가고, audio-api는
-# AUTH_MODE=development 동안 X-Cantaloupe-Subject 헤더를 그대로 신뢰한다.
-# 따라서 Source CIDR 제한이 현재 유일한 접근 통제다. Cognito JWT 검증과
-# TLS가 붙기 전에는 이 목록을 넓히지 않는다.
+# audio-api는 AUTH_MODE=development 동안 X-Cantaloupe-Subject 헤더를 그대로
+# 신뢰한다. TLS가 붙어도 인증이 없다는 사실은 바뀌지 않으므로, Source CIDR
+# 제한은 여전히 유일한 접근 통제다. Keycloak OIDC 검증이 API에 들어가기
+# 전까지 이 목록을 넓히지 않는다.
 resource "aws_vpc_security_group_ingress_rule" "audio_nlb_http" {
   for_each = toset(var.allowed_ingress_cidrs)
 
@@ -21,6 +21,17 @@ resource "aws_vpc_security_group_ingress_rule" "audio_nlb_http" {
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
+  cidr_ipv4         = each.value
+}
+
+resource "aws_vpc_security_group_ingress_rule" "audio_nlb_https" {
+  for_each = var.enable_tls ? toset(var.allowed_ingress_cidrs) : toset([])
+
+  security_group_id = aws_security_group.audio_nlb.id
+  description       = "Audio NLB HTTPS from ${each.value}"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
   cidr_ipv4         = each.value
 }
 

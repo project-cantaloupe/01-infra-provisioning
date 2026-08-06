@@ -38,6 +38,20 @@ output "public_host" {
   value       = var.create_dns_record ? var.public_host : null
 }
 
+output "public_url" {
+  description = "Address to open in a browser"
+  value = (
+    var.enable_tls && var.create_dns_record ? "https://${var.public_host}"
+    : var.create_dns_record ? "http://${var.public_host}"
+    : "http://${aws_lb.audio.dns_name}"
+  )
+}
+
+output "certificate_arn" {
+  description = "ACM certificate ARN used by the NLB TLS listener"
+  value       = var.enable_tls ? aws_acm_certificate.audio[0].arn : null
+}
+
 output "cert_manager_role_arn" {
   description = "IAM role ARN for cert-manager when DNS-01 IAM is enabled"
   value       = var.enable_cert_manager_iam ? aws_iam_role.cert_manager[0].arn : null
