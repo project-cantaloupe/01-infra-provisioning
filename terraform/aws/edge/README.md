@@ -6,14 +6,32 @@ Public NLB와 Istio ingress gateway 사이의 AWS 자원을 관리한다.
 
 - internet-facing Network Load Balancer
 - NLB Security Group과 Worker NodePort ingress 규칙
-- TCP 80, 443 listener
+- TCP 80 listener
 - Istio Gateway NodePort용 Target Group
 - AWS Worker Target 등록
 - 선택형 Route53 Alias Record
 - 선택형 cert-manager DNS-01 IAM Role
 
-TLS는 NLB가 아니라 Istio Gateway에서 종료한다. HTTP listener는 Istio가 HTTPS로
-전환할 수 있도록 TCP 80을 그대로 전달한다.
+TLS는 NLB가 아니라 Istio Gateway에서 종료한다. NLB는 TCP를 그대로 전달한다.
+
+## 공개 범위
+
+`allowed_ingress_cidrs`에 나열한 Source만 NLB에 도달한다. 기본값이 없으므로
+값을 넣지 않으면 apply가 실패한다.
+
+현재 audio-gateway에는 TLS server 블록이 없고 audio-api는
+`AUTH_MODE=development` 상태다. 요청이 평문으로 오가고 `X-Cantaloupe-Subject`
+헤더만으로 인증을 통과하므로, **Source CIDR 제한이 유일한 접근 통제다.**
+`0.0.0.0/0`은 변수 검증에서 거부한다.
+
+Cognito JWT 검증과 Gateway TLS가 들어오면 그때 이 제한을 완화한다.
+
+## 443을 열지 않는 이유
+
+audio-gateway의 `servers`가 HTTP 80 하나뿐이라 Envoy는 443을 바인딩하지 않는다.
+NLB Health Check는 32021을 보므로 443 Target Group을 만들면 Target이 healthy로
+표시된 채 443 요청만 조용히 끊긴다. Gateway에 TLS server와 인증서가 생긴 뒤에
+listener와 Target Group을 함께 추가한다.
 
 ## 사전 조건
 
@@ -23,7 +41,6 @@ TLS는 NLB가 아니라 Istio Gateway에서 종료한다. HTTP listener는 Istio
 
 ```text
 HTTP    30080
-HTTPS   30443
 Health  32021 -> /healthz/ready
 ```
 
@@ -32,6 +49,8 @@ Health  32021 -> /healthz/ready
 ```bash
 cp terraform/aws/edge/terraform.tfvars.example terraform/aws/edge/terraform.tfvars
 # terraform.tfvars의 AWS 계정 ID와 관리 태그 값을 실제 값으로 교체
+# allowed_ingress_cidrs는 접속할 단말의 공인 IP로 교체한다
+curl -s https://checkip.amazonaws.com
 
 terraform -chdir=terraform/aws/edge init -reconfigure
 terraform -chdir=terraform/aws/edge fmt -check

@@ -11,7 +11,6 @@ locals {
 
   node_ports = {
     http   = var.audio_ingress_http_node_port
-    https  = var.audio_ingress_https_node_port
     health = var.audio_ingress_health_node_port
   }
 

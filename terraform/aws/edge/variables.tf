@@ -34,6 +34,31 @@ variable "data_class" {
   }
 }
 
+# NLB에 도달할 수 있는 Source를 명시적으로 좁힌다. 기본값을 두지 않는 이유는
+# 공개 범위를 무의식적으로 상속하지 않게 하려는 것이다. 값은 terraform.tfvars에
+# 넣고, 재택·모바일 등으로 공인 IP가 바뀌면 그때 갱신한다.
+variable "allowed_ingress_cidrs" {
+  description = "Source IPv4 CIDRs allowed to reach the audio NLB over HTTP"
+  type        = list(string)
+
+  validation {
+    condition     = length(var.allowed_ingress_cidrs) > 0
+    error_message = "allowed_ingress_cidrs must list at least one source CIDR."
+  }
+
+  validation {
+    condition     = alltrue([for cidr in var.allowed_ingress_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "Every allowed_ingress_cidrs entry must be a valid CIDR, for example 203.0.113.10/32."
+  }
+
+  # AUTH_MODE=development는 X-Cantaloupe-Subject 헤더만으로 인증을 통과시킨다.
+  # 그 상태로 /0을 열면 누구나 Presigned URL을 발급받을 수 있다.
+  validation {
+    condition     = !contains([for cidr in var.allowed_ingress_cidrs : try(split("/", cidr)[1], "")], "0")
+    error_message = "allowed_ingress_cidrs must not open the NLB to the whole internet while AUTH_MODE is development."
+  }
+}
+
 # Terraform Edge와 Istio Gateway Service가 공유하는 고정 NodePort 계약이다.
 variable "audio_ingress_http_node_port" {
   description = "NodePort used by the Istio ingress gateway HTTP listener"
@@ -43,17 +68,6 @@ variable "audio_ingress_http_node_port" {
   validation {
     condition     = var.audio_ingress_http_node_port >= 30000 && var.audio_ingress_http_node_port <= 32767
     error_message = "audio_ingress_http_node_port must be in the Kubernetes NodePort range 30000-32767."
-  }
-}
-
-variable "audio_ingress_https_node_port" {
-  description = "NodePort used by the Istio ingress gateway HTTPS listener"
-  type        = number
-  default     = 30443
-
-  validation {
-    condition     = var.audio_ingress_https_node_port >= 30000 && var.audio_ingress_https_node_port <= 32767
-    error_message = "audio_ingress_https_node_port must be in the Kubernetes NodePort range 30000-32767."
   }
 }
 
@@ -149,10 +163,9 @@ check "audio_ingress_node_ports_are_distinct" {
   assert {
     condition = length(distinct([
       var.audio_ingress_http_node_port,
-      var.audio_ingress_https_node_port,
       var.audio_ingress_health_node_port,
-    ])) == 3
-    error_message = "The Istio ingress HTTP, HTTPS, and health NodePorts must be distinct."
+    ])) == 2
+    error_message = "The Istio ingress HTTP and health NodePorts must be distinct."
   }
 }
 

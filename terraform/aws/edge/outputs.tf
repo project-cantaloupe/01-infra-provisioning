@@ -23,12 +23,14 @@ output "audio_ingress_node_ports" {
   value       = local.node_ports
 }
 
-output "target_group_arns" {
-  description = "Target groups forwarding TCP traffic to the Istio gateway NodePorts"
-  value = {
-    http  = aws_lb_target_group.http.arn
-    https = aws_lb_target_group.https.arn
-  }
+output "target_group_arn" {
+  description = "Target group forwarding TCP traffic to the Istio gateway HTTP NodePort"
+  value       = aws_lb_target_group.http.arn
+}
+
+output "allowed_ingress_cidrs" {
+  description = "Source CIDRs currently allowed to reach the audio NLB"
+  value       = sort(var.allowed_ingress_cidrs)
 }
 
 output "public_host" {
@@ -42,6 +44,6 @@ output "cert_manager_role_arn" {
 }
 
 output "registered_worker_instance_ids" {
-  description = "AWS Worker instance IDs registered in both NLB target groups"
+  description = "AWS Worker instance IDs registered in the NLB target group"
   value       = sort(keys(local.worker_nodes))
 }
