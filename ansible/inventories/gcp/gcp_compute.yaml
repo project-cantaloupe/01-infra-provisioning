@@ -1,6 +1,7 @@
 plugin: google.cloud.gcp_compute
 projects: ["{{ lookup('env', 'GCP_PROJECT') }}"]
 filters: ["status = RUNNING"]
+vars_prefix: gcp_
 keyed_groups:
   - key: labels.platform
     prefix: platform

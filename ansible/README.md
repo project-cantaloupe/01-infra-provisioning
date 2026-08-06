@@ -23,11 +23,14 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 노드�
 | `kubeadm-control-plane` | 단일 Control Plane 초기화와 필수 노드 라벨 적용 |
 | `cni-calico` | Tigera Operator와 Calico VXLAN 네트워크 설치 |
 | `kubeadm-worker` | 단기 토큰 생성, Worker 가입, 토큰 폐기와 라벨 적용 |
-| `site-node-labels` | 수동 join 노드까지 이름을 기준으로 필수 라벨 보정 |
+| `site-node-labels` | 수동 join 노드까지 필수 라벨과 providerID 계약 검증 |
 
 클러스터 이름은 `cntlp-k8s`이고 Kubernetes API와 각 노드의
 `InternalIP`에는 Tailscale IPv4를 사용한다. 플랫폼 구분은 노드 이름과
-`platform` 라벨에만 남기며 AWS Worker에는 `role=service`를 적용한다.
+`platform` 라벨에만 남기며 AWS Worker에는 `role=service`를 적용한다. 모든 Node는
+추가로 `topology.kubernetes.io/region`과
+`node.kubernetes.io/instance-type`을 가져야 한다. AWS/GCP의 `spec.providerID`는
+가격 키가 아니라 실제 VM 신원 검증에 사용한다.
 
 ## 재실행 안전성
 
@@ -127,3 +130,12 @@ GCP와 On-Prem도 동적 인벤토리를 사용한다. GCP VM에는 Terraform이
 `platform=gcp`와 `role=monitoring|logging`을, Proxmox VM에는
 `platform-onp`와 `role-devops`를 부여한다. 접속 정보나 고정 IP를 정적
 `hosts.ini`에 복사하지 않는다.
+
+동적 인벤토리는 공급자 API의 실제 region/machine type을 Ansible 변수로 전달한다.
+On-prem은 Terraform이 CPU/Memory 입력으로 `custom-<vCPU>vcpu-<GiB>gib` 태그를
+생성한다. kubeadm 역할은 다음 Node 계약을 적용한다.
+
+```text
+platform + role + topology.kubernetes.io/region
++ node.kubernetes.io/instance-type + cloud spec.providerID
+```

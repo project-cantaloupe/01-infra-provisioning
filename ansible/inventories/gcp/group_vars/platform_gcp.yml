@@ -1,0 +1,9 @@
+---
+# 실제 Compute Engine API 응답을 사용한다. Terraform 코드에 machine type을
+# 중복 기입하지 않아 콘솔 변경이나 기존 드리프트를 잘못된 라벨로 숨기지 않는다.
+kubernetes_node_platform: gcp
+kubernetes_node_region: >-
+  {{ (gcp_zone | regex_replace('^.*/', '')) | regex_replace('-[a-z]$', '') }}
+kubernetes_node_instance_type: "{{ gcp_machineType | regex_replace('^.*/', '') }}"
+kubernetes_node_provider_id: >-
+  gce://{{ lookup('env', 'GCP_PROJECT') }}/{{ gcp_zone | regex_replace('^.*/', '') }}/{{ gcp_name }}

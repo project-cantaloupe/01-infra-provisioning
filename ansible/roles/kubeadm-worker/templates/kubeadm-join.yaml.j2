@@ -13,3 +13,9 @@ nodeRegistration:
   kubeletExtraArgs:
     - name: node-ip
       value: "{{ tailscale_ipv4 }}"
+    - name: node-labels
+      value: "platform={{ kubernetes_node_platform }},role={{ kubernetes_node_role }},topology.kubernetes.io/region={{ kubernetes_node_region }},node.kubernetes.io/instance-type={{ kubernetes_node_instance_type }}"
+{% if kubernetes_node_provider_id | length > 0 %}
+    - name: provider-id
+      value: "{{ kubernetes_node_provider_id }}"
+{% endif %}
