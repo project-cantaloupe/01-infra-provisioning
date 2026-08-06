@@ -17,3 +17,12 @@ worker_count                 = 1
 
 # 모든 노드의 암호화된 gp3 Root EBS 크기(GiB)
 root_volume_size = 30
+
+# 두 값을 빠뜨리면 기본값 false로 떨어져 이미 만들어진 IAM Role과
+# Instance Profile을 destroy하는 plan이 나온다. 값을 명시한다.
+#
+# Pod가 IMDS로 임시 자격증명을 받도록 Worker Node에 Instance Profile을 붙인다.
+enable_worker_instance_profile = true
+
+# Control Plane에서 Kubernetes Secret을 만들 때 필요한 최소 조회 권한을 IMDS로 받는다.
+enable_control_plane_instance_profile = true

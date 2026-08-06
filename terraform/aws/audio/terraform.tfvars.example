@@ -4,8 +4,13 @@ aws_region     = "ap-northeast-2"
 owner      = "team-audio"
 data_class = "user-audio"
 
-# 실제 웹 Origin으로 교체한다. 경로와 마지막 /는 넣지 않는다.
-web_allowed_origins = ["https://audio.example.com"]
+# 브라우저가 Presigned URL로 S3에 직접 PUT하고 CloudFront에서 GET하므로,
+# Web을 실제로 띄운 Origin이 여기 없으면 업로드와 재생이 CORS에서 막힌다.
+# NLB 주소로 접속한다면 그 주소도 넣는다. 경로와 마지막 /는 넣지 않는다.
+web_allowed_origins = [
+  "https://audio.example.com",
+  "http://localhost:5173",
+]
 
 # 128 KB 초과 원본은 30일 뒤 Standard-IA, 60일 뒤 Glacier Instant Retrieval로 이동한다.
 quarantine_standard_ia_transition_days = 30
@@ -23,6 +28,10 @@ cloudfront_price_class        = "PriceClass_200"
 enable_workload_iam           = false
 cluster_oidc_provider_arn     = null
 cluster_oidc_issuer_url       = null
+
+# OIDC가 없는 동안 Workload 권한 합집합을 Compute Stack의 Worker Role에 붙인다.
+# 빠뜨리면 기본값 false로 떨어져 이미 만들어진 정책을 destroy하는 plan이 나온다.
+enable_node_role_policy = true
 
 audio_namespace                 = "apps"
 audio_api_service_account       = "audio-api"
