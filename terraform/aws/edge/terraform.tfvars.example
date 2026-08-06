@@ -4,9 +4,12 @@ aws_region     = "ap-northeast-2"
 owner      = "team-platform"
 data_class = "user-audio"
 
+# NLB에 접근할 Source를 명시한다. 기본값이 없으므로 반드시 입력해야 한다.
+# TLS와 Cognito JWT 검증이 붙기 전까지 /32 단위로만 유지한다.
+allowed_ingress_cidrs = ["203.0.113.10/32"]
+
 # Istio ingress gateway Service와 동일한 값을 유지한다.
 audio_ingress_http_node_port   = 30080
-audio_ingress_https_node_port  = 30443
 audio_ingress_health_node_port = 32021
 
 # PoC 삭제를 막지 않도록 기본값을 유지한다.
