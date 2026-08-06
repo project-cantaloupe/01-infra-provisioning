@@ -2,9 +2,18 @@
 resource "aws_cloudfront_public_key" "audio" {
   count = var.enable_cloudfront ? 1 : 0
 
-  name        = "${local.name_prefix}-api-playback"
+  # 키를 교체하면 encoded_key 변경이 재생성을 강제한다. 기본 순서인 삭제 후 생성은
+  # 실패한다. Key Group이 참조 중인 공개키는 CloudFront가 삭제를 거부하기 때문이다.
+  # 새 키를 먼저 만들고 Key Group이 그것을 가리킨 뒤 옛 키를 지운다.
+  #
+  # 이름이 겹치면 생성 단계에서 충돌하므로 접미사를 붙여 매번 다른 이름을 쓴다.
+  name        = "${local.name_prefix}-api-playback-${substr(sha256(try(file("${path.module}/${var.cloudfront_public_key_path}"), "")), 0, 8)}"
   comment     = "Public key used to verify Cantaloupe audio playback signed URLs"
   encoded_key = try(file("${path.module}/${var.cloudfront_public_key_path}"), "")
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_cloudfront_key_group" "audio" {
