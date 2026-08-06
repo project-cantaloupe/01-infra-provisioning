@@ -26,3 +26,7 @@ ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev
 # cloud-init 이 sudo NOPASSWD 로 만들어 뒀다.
 ansible_become: true
 ansible_become_method: sudo
+
+kubernetes_node_platform: onp
+# 외부 Cloud Provider 신원은 아니지만 재생성 후 Node/VM 대응을 검증할 팀 로컬 ID다.
+kubernetes_node_provider_id: "custom:///{{ proxmox_name }}"

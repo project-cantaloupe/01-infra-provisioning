@@ -206,7 +206,10 @@ kubeadm token create --print-join-command
 
 ```bash
 kubectl get nodes -o wide
-kubectl get node cntlp-onp-wk-01 --show-labels    # platform=onp, role=devops
+kubectl get node cntlp-onp-wk-01 \
+  -L platform,role,topology.kubernetes.io/region,node.kubernetes.io/instance-type
+# platform=onp, role=devops, region=on-premise,
+# instance-type=custom-8vcpu-16gib를 확인한다.
 ```
 
 **CNI가 아직이면 `NotReady`가 정상이다.**

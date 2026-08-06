@@ -1,3 +1,6 @@
 ---
 # Kubernetes 노드 라벨에 사용하는 실제 물리 플랫폼이다.
 kubernetes_node_platform: aws
+kubernetes_node_region: "{{ aws_placement.region }}"
+kubernetes_node_instance_type: "{{ aws_instance_type }}"
+kubernetes_node_provider_id: "aws:///{{ aws_placement.availability_zone }}/{{ aws_instance_id }}"

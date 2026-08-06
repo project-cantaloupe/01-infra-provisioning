@@ -26,6 +26,14 @@ compose:
     | map(attribute="ip-addresses") | flatten
     | select("match", "^[0-9]{1,3}[.]") | map("regex_replace", "/.*$", "")
     | first | default(proxmox_name)
+  kubernetes_node_region: >-
+    (proxmox_tags_parsed | default([]))
+    | select('match', '^region-') | map('replace', 'region-', '')
+    | first | default('')
+  kubernetes_node_instance_type: >-
+    (proxmox_tags_parsed | default([]))
+    | select('match', '^instance-type-') | map('replace', 'instance-type-', '')
+    | first | default('')
 
 # Terraform 이 붙인 태그가 그대로 Ansible 그룹이 된다 — aws_ec2.yaml, gcp_compute.yaml 과 같은 규칙.
 #

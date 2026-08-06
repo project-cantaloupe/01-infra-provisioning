@@ -93,3 +93,24 @@
       loop: "{{ (kubernetes_cluster_nodes.stdout | from_json)['items'] }}"
       loop_control:
         label: "{{ item.metadata.name }}"
+
+    - name: 전체 노드 가격 메타데이터와 providerID 확인
+      ansible.builtin.assert:
+        that:
+          - item.metadata.labels['topology.kubernetes.io/region'] | default('') | length > 0
+          - item.metadata.labels['node.kubernetes.io/instance-type'] | default('') | length > 0
+          - >-
+            (item.metadata.labels.platform == 'onp'
+             and item.spec.providerID | default('') is match('^custom:///'))
+            or
+            (item.metadata.labels.platform == 'aws'
+             and item.spec.providerID | default('') is match('^aws:///'))
+            or
+            (item.metadata.labels.platform == 'gcp'
+             and item.spec.providerID | default('') is match('^gce://'))
+        fail_msg: >-
+          {{ item.metadata.name }}의 region/instance-type 라벨 또는
+          AWS/GCP providerID가 FinOps Node 계약과 다릅니다.
+      loop: "{{ (kubernetes_cluster_nodes.stdout | from_json)['items'] }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"

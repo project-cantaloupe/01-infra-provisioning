@@ -2,3 +2,6 @@
 kubeadm_init_config_path: /etc/kubernetes/kubeadm-init.yaml
 kubernetes_admin_user: "{{ ansible_user | default('ubuntu') }}"
 kubernetes_admin_home: "/home/{{ kubernetes_admin_user }}"
+kubernetes_node_region: ""
+kubernetes_node_instance_type: ""
+kubernetes_node_provider_id: ""
