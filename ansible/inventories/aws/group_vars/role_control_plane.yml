@@ -41,5 +41,24 @@ tailscale_tags: "tag:cntlp-aws-cp"
 # 적으면 한쪽만 바꿨을 때 광고 대역과 실제 파드 대역이 어긋난다.
 # vpn-mesh 를 돌리는 플레이 셋(site-prerequisites·site-control-plane·
 # site-workers)이 전부 그 vars_files 를 싣는다.
+# ── VPC 대역이 여기 있는 이유 (2026-08-06) ─────────────────────
+#
+# **`tailscale set --advertise-routes` 는 절대 지정이다.** 목록을 통째로
+# 바꾼다. 그래서 파드 CIDR 만 적어두고 롤을 돌리면 지금 광고 중인 다른
+# 경로가 **조용히 사라진다.**
+#
+# 실제로 그 상황이었다. 실물은 `10.20.10.0/24`(AWS VPC 서브넷) 하나만
+# 광고하고 있었는데 코드 어디에도 그 값이 없었다 — 손으로 넣고 tailnet
+# 승인까지 받은 것이다. 파드 CIDR 은 반대로 코드에만 있고 실물에 없었다.
+# 양쪽으로 갈린 드리프트다.
+#
+# **쓰는 곳을 모르는 채로 지우지 않는다.** VPC 안의 자원은 5대와 Vault 가
+# 전부 tailnet 에 직접 붙어 있어 사설 IP 가 필요 없어 보이지만, 승인까지
+# 받아 살아 있는 경로를 근거 없이 끊는 것은 되돌리기 어려운 쪽이다.
+#
+# **해제 조건** — 이 대역으로 가는 트래픽이 없음을 확인하면 이 줄을 지운다.
+# 확인 방법은 라우터 노드에서 포워딩 카운터를 보는 것이다:
+#   sudo iptables -L FORWARD -v -n | grep 10.20.10
 tailscale_advertise_routes:
   - "{{ kubernetes_pod_cidr }}"
+  - 10.20.10.0/24
