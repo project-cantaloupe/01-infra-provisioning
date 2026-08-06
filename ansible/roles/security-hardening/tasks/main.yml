@@ -328,3 +328,67 @@
     - name: 방화벽 규칙을 보여준다
       ansible.builtin.debug:
         var: _ufw.stdout_lines
+
+# ── 루프 가드 두 번째 층 — ip rule ──────────────────────────────
+#
+# **`security_enable_firewall` 블록 바깥이다. 일부러 그렇다.**
+# 이 층의 존재 이유가 "ufw 와 무관하게 산다" 이므로, ufw 를 끈 노드에서도
+# 서야 한다. 안에 넣으면 층 1 과 같은 실패 모드를 공유해 의미가 없어진다.
+#
+# 이 유닛은 2026-08-05 까지 `cntlp-gcp-wk-01` 한 대에만 손으로 만들어져
+# 있었고 코드에도 문서에도 없었다. 잘 작동하고 있어서 아무 경보도 울리지
+# 않았다 — 그래서 「설명되지 않는 정상」이 가장 오래 숨는다.
+# → findings/20260806_loop-guard-two-layers.md
+- name: Tailscale-Calico ip rule 가드 유닛을 놓는다
+  ansible.builtin.template:
+    src: cntlp-tailscale-calico-guard.service.j2
+    dest: /etc/systemd/system/cntlp-tailscale-calico-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: security_tailscale_calico_loop_guard | bool
+  notify: restart loop guard rule
+
+- name: ip rule 가드를 켜고 부팅에도 걸어둔다
+  ansible.builtin.systemd_service:
+    name: cntlp-tailscale-calico-guard.service
+    daemon_reload: true
+    enabled: true
+    state: started
+  when: security_tailscale_calico_loop_guard | bool
+
+- name: 템플릿이 바뀌었으면 지금 반영한다
+  ansible.builtin.meta: flush_handlers
+
+# **유닛이 active 라는 것은 규칙이 있다는 뜻이 아니다.** `Type=oneshot` +
+# `RemainAfterExit=yes` 는 ExecStart 가 한 번 성공했다는 기록일 뿐이라,
+# 그 뒤에 누가 `ip rule del` 을 해도 유닛은 계속 active 로 뜬다.
+# ufw 가 active 인데 INPUT 점프가 없던 것과 정확히 같은 부류다 —
+# **도구의 자기 보고 대신 커널을 읽는다.**
+- name: ip rule 가드가 실제로 커널에 올라왔는지 확인한다
+  ansible.builtin.command: ip rule
+  register: _ip_rule_after
+  changed_when: false
+  check_mode: false
+  when: security_tailscale_calico_loop_guard | bool
+
+- name: ip rule 가드가 없으면 실패로 알린다
+  ansible.builtin.assert:
+    that:
+      - _ip_rule_after.stdout is search('^' ~ security_loop_guard_rule_pref ~ ':.*'
+          ~ (security_calico_pod_cidr | trim | regex_escape) ~ '.*unreachable',
+          multiline=True)
+    fail_msg: |
+      ip rule 가드가 커널에 없다. 유닛은 켜졌는데 규칙이 안 붙은 것이다.
+
+      확인:  ip rule | grep {{ security_loop_guard_rule_pref }}
+             systemctl status cntlp-tailscale-calico-guard.service
+
+      이 노드는 지금 루프 가드가 **층 1(ufw)만** 남은 상태다. ufw 가 꺼지면
+      가드가 통째로 사라진다.
+    success_msg: >-
+      ip rule {{ security_loop_guard_rule_pref }} 확인 —
+      tailscaled 패킷의 {{ security_calico_pod_cidr }} 경로가 끊겨 있다
+  when:
+    - security_tailscale_calico_loop_guard | bool
+    - not ansible_check_mode

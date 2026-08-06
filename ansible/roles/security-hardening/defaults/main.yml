@@ -60,3 +60,30 @@ security_calico_interface: vxlan.calico
 security_calico_pod_cidr: >-
   {{ kubernetes_pod_cidr | default('10.244.0.0/16') }}
 security_tailscale_udp_port: "41641"
+
+# ── 루프 가드의 두 번째 층 (ip rule) ────────────────────────────
+#
+# 위 `security_tailscale_calico_loop_guard` 가 켜면 **두 층이 함께 선다.**
+#
+#   층 1  ufw before.rules 의 DROP     netfilter OUTPUT/INPUT
+#   층 2  아래 ip rule                  라우팅 정책 조회 (한 층 이르다)
+#
+# **왜 둘인가 — 고장 원인이 서로 독립이라서다.** 층 1 은 `ufw` 가 active 일
+# 때만 존재한다. 그런데 우리는 ufw 를 일상적으로 끈다: 데드맨 타이머가 돌 때,
+# 문제를 볼 때. 실제로 2026-08-05 에 `onp-wk-01` 이 데드맨으로 `ufw disable`
+# 됐고 그 순간 루프 가드가 통째로 사라졌다 — 아무도 몰랐다.
+# 층 2 는 systemd 유닛이라 ufw 상태를 공유하지 않는다.
+#
+# 반대로 층 2 는 **출력 방향만** 덮는다. 입력 방향(`-i vxlan.calico`)은
+# 층 1 에만 있다. 서로를 못 덮는 지점이 각자 있어서 둘 다 둔다.
+# → decisions/20260806_loop-guard-two-layers.md
+#
+# 우선순위는 tailscaled 가 만드는 규칙(5210~5270)보다 **작아야** 한다.
+# ip rule 은 번호가 작은 것이 먼저 이기므로, 5210(lookup main)보다 앞에서
+# 끊어야 Calico 경로를 타기 전에 막힌다.
+security_loop_guard_rule_pref: 5200
+
+# tailscaled 가 자기 패킷에 찍는 bypass 마크. 이 값은 Tailscale 이 정한다 —
+# 바꾸는 값이 아니라 맞추는 값이다. `ip rule` 출력의 5210~5250 에서 같은
+# 마크를 볼 수 있다.
+security_tailscale_fwmark: "0x80000/0xff0000"
