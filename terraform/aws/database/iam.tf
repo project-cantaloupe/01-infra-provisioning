@@ -53,6 +53,16 @@ data "aws_iam_policy_document" "database_control_plane" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [aws_db_instance.api.master_user_secret[0].secret_arn]
   }
+
+  # Secret ARN과 접속 주소를 조회하려면 필요하다. 이것이 없으면 운영자가 값을
+  # 손으로 옮겨 적어야 하고, 문서에 적힌 절차가 그대로 동작하지 않는다.
+  # 대상 DB 하나에 대한 읽기이며 자격증명을 노출하지 않는다.
+  statement {
+    sid       = "DescribeApiDatabase"
+    effect    = "Allow"
+    actions   = ["rds:DescribeDBInstances"]
+    resources = [aws_db_instance.api.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "database_control_plane" {
