@@ -10,6 +10,7 @@ Karpenter Controller 권한과 동적 Worker Node 권한은 별도 단계에서 
 - SSM managed instance 및 Session Manager 연결 최소 inline 권한
 - inbound 없이 outbound만 허용하는 Packer Builder Security Group
 - 기본값은 꺼져 있는 Golden AMI Boot Test EC2
+- 기본값은 꺼져 있는 자동 가입용 Secret 컨테이너와 Worker 최소 조회 권한
 
 기본 상태에는 시간당 과금 자원이 없다. `packer build`를 실행할 때는
 임시 `t3.small` EC2와 30 GiB gp3가 생성되고, Boot Test를 켜면 검증하는
@@ -69,6 +70,66 @@ AWS_PROFILE=cntlp \
 EC2와 Root EBS를 삭제한다. AMI와 Snapshot, Packer Builder IAM·Security Group은
 삭제하지 않는다.
 
+## Tailscale과 kubeadm 자동 가입 검증
+
+기본 Boot Test가 성공한 다음, 같은 예약 이름 `cntlp-aws-wk-99` 한 대로
+Tailscale 가입과 kubeadm join을 검증한다. 이 단계는 Karpenter Controller나
+다중 Node 명명 로직을 검증하지 않는다.
+
+Terraform은 Secret 컨테이너와 해당 Secret 하나를 읽는 Worker IAM 권한만
+관리한다. Tailscale auth key와 kubeadm bootstrap token 값은 Terraform 변수,
+state, EC2 user data에 넣지 않는다. 기존 Compute state가 아직 Instance Profile
+전용 output을 갖지 않아도, 현재 계약상 Worker Role과 Instance Profile 이름이
+같으므로 파괴적인 Compute apply 없이 기존 output을 사용할 수 있다.
+
+```bash
+terraform -chdir=terraform/aws/karpenter plan \
+  -var='enable_bootstrap_foundation=true' \
+  -var='bootstrap_expires_on=2099-12-31'
+```
+
+계획에는 Secrets Manager Secret 하나와 기존 Service Worker Role에 붙는
+`secretsmanager:GetSecretValue` inline Policy 하나만 있어야 한다. 승인 후
+apply한 다음, 태그가 허용된 단기·ephemeral Tailscale auth key를 준비하고
+아래 스크립트를 실행한다. 키는 화면에 표시하거나 shell history에 넣지 않는다.
+
+```bash
+AWS_PROFILE=cntlp \
+  terraform/aws/karpenter/scripts/prepare-bootstrap-secret.sh
+```
+
+스크립트는 Control Plane에서 TTL 30분 kubeadm token을 새로 만들고 Secret
+값을 AWS CLI로 직접 등록한다. 그다음 Golden AMI 이름을 지정해 자동 가입
+Boot Test를 계획한다.
+
+```bash
+terraform -chdir=terraform/aws/karpenter plan \
+  -var='enable_boot_test=true' \
+  -var='enable_bootstrap_foundation=true' \
+  -var='boot_test_join_cluster=true' \
+  -var='boot_test_ami_name=cntlp-aws-cicd-k8s-worker-abcdef0' \
+  -var='boot_test_expires_on=2099-12-31' \
+  -var='bootstrap_expires_on=2099-12-31'
+```
+
+apply 후 자동 가입 결과는 다음 스크립트로 확인한다.
+
+```bash
+terraform/aws/karpenter/scripts/verify-automatic-join.sh
+```
+
+검증이 끝나면 cleanup 스크립트로 Node를 drain·delete하고 Tailscale에서
+logout하며 kubeadm token을 명시적으로 삭제한다.
+
+```bash
+AWS_PROFILE=cntlp \
+  terraform/aws/karpenter/scripts/cleanup-automatic-join.sh
+```
+
+그다음 모든 enable 인자 없이 karpenter Stack을 plan·apply해 Boot Test EC2,
+Root EBS, 임시 Secret과 inline Policy를 제거한다. cleanup 스크립트가 token을
+삭제하지 못해도 TTL 30분 뒤 자동 만료된다.
+
 ## 삭제 경계
 
 ```bash
@@ -76,5 +137,5 @@ terraform -chdir=terraform/aws/karpenter destroy
 ```
 
 이 명령은 Boot Test EC2가 남아 있으면 함께 삭제한 뒤 Packer Builder용
-IAM과 Security Group을 삭제한다. Packer가 만든 AMI와 EBS Snapshot,
+IAM과 Security Group, bootstrap Secret과 inline Policy를 삭제한다. Packer가 만든 AMI와 EBS Snapshot,
 기존 EC2, VPC, Kubernetes Node는 삭제하지 않는다.

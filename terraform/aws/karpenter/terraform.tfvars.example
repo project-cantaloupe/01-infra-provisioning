@@ -7,3 +7,8 @@ owner = "team-platform"
 # enable_boot_test     = true
 # boot_test_ami_name   = "cntlp-aws-cicd-k8s-worker-abcdef0"
 # boot_test_expires_on = "2099-12-31"
+
+# Tailscale + kubeadm 자동 가입을 한 대로 검증할 때만 CLI -var로 전달한다.
+# enable_bootstrap_foundation = true
+# boot_test_join_cluster      = true
+# bootstrap_expires_on        = "2099-12-31"

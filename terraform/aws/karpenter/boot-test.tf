@@ -25,26 +25,27 @@ data "aws_ami" "boot_test" {
 resource "aws_instance" "boot_test" {
   count = var.enable_boot_test ? 1 : 0
 
-  ami                    = data.aws_ami.boot_test[0].id
-  instance_type          = "t3.small"
-  subnet_id              = data.terraform_remote_state.network.outputs.private_subnet_ids[0]
-  vpc_security_group_ids = [aws_security_group.packer.id]
-  iam_instance_profile   = aws_iam_instance_profile.packer.name
+  ami           = data.aws_ami.boot_test[0].id
+  instance_type = "t3.small"
+  subnet_id     = data.terraform_remote_state.network.outputs.private_subnet_ids[0]
+  vpc_security_group_ids = var.boot_test_join_cluster ? [
+    data.terraform_remote_state.network.outputs.cluster_security_group_id,
+    data.terraform_remote_state.network.outputs.worker_security_group_id,
+  ] : [aws_security_group.packer.id]
+  iam_instance_profile = var.boot_test_join_cluster ? (
+    local.worker_instance_profile_name
+  ) : aws_iam_instance_profile.packer.name
 
   associate_public_ip_address = false
 
-  # Karpenter 자동 명명 규칙을 확정하기 전이므로 기존 Node 패턴의 99번을
-  # Boot Test 전용으로 예약한다. 이 단계에서는 tailnet과 Kubernetes에 가입하지 않는다.
-  user_data = <<-EOF
-    #!/bin/bash
-    set -euxo pipefail
-
-    hostnamectl set-hostname cntlp-aws-wk-99
-
-    cat >/etc/cloud/cloud.cfg.d/99-preserve-hostname.cfg <<'CFG'
-    preserve_hostname: true
-    CFG
-  EOF
+  # Secret 값은 user_data와 Terraform state에 넣지 않는다. 자동 가입을 켠 경우에도
+  # Secret ARN만 전달하고, 실제 단기 자격증명은 Instance Profile로 런타임에 조회한다.
+  user_data = templatefile("${path.module}/templates/boot-test-user-data.sh.tftpl", {
+    aws_region        = var.aws_region
+    bootstrap_enabled = var.boot_test_join_cluster
+    node_name         = local.boot_test_node_name
+    secret_id         = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.worker_bootstrap[0].arn : ""
+  })
 
   user_data_replace_on_change = true
 
@@ -78,6 +79,7 @@ resource "aws_instance" "boot_test" {
 
   depends_on = [
     aws_iam_role_policy.packer_ssm,
+    aws_iam_role_policy.worker_bootstrap_secret,
     aws_vpc_security_group_egress_rule.packer,
   ]
 }

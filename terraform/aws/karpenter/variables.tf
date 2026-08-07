@@ -30,6 +30,40 @@ variable "enable_boot_test" {
   default     = false
 }
 
+variable "enable_bootstrap_foundation" {
+  description = "Create temporary Secret metadata and least-privilege Worker IAM access for the automatic join test"
+  type        = bool
+  default     = false
+}
+
+variable "boot_test_join_cluster" {
+  description = "Run the secret-free Tailscale and kubeadm bootstrap on the temporary Boot Test instance"
+  type        = bool
+  default     = false
+
+  validation {
+    condition = (
+      !var.boot_test_join_cluster
+      || (var.enable_boot_test && var.enable_bootstrap_foundation)
+    )
+    error_message = "boot_test_join_cluster requires both enable_boot_test and enable_bootstrap_foundation."
+  }
+}
+
+variable "bootstrap_expires_on" {
+  description = "Expiration date tag for the temporary bootstrap Secret in YYYY-MM-DD format"
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      !var.enable_bootstrap_foundation
+      || can(formatdate("YYYY-MM-DD", "${var.bootstrap_expires_on}T00:00:00Z"))
+    )
+    error_message = "bootstrap_expires_on must be a valid YYYY-MM-DD date when enable_bootstrap_foundation is true."
+  }
+}
+
 variable "boot_test_ami_name" {
   description = "Exact Packer Golden AMI name used only when enable_boot_test is true"
   type        = string

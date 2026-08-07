@@ -127,3 +127,107 @@ run "golden_ami_boot_test" {
     error_message = "The Boot Test instance must follow the naming and temporary lifecycle tag conventions."
   }
 }
+
+run "automatic_join_boot_test" {
+  command = plan
+
+  variables {
+    enable_boot_test            = true
+    enable_bootstrap_foundation = true
+    boot_test_join_cluster      = true
+    boot_test_ami_name          = "cntlp-aws-cicd-k8s-worker-abcdef0"
+    boot_test_expires_on        = "2099-12-31"
+    bootstrap_expires_on        = "2099-12-31"
+  }
+
+  override_data {
+    target = data.terraform_remote_state.network
+    values = {
+      outputs = {
+        vpc_id                    = "vpc-00000000000000000"
+        private_subnet_ids        = ["subnet-00000000000000000"]
+        cluster_security_group_id = "sg-00000000000000001"
+        worker_security_group_id  = "sg-00000000000000002"
+      }
+    }
+  }
+
+  override_data {
+    target = data.terraform_remote_state.compute
+    values = {
+      outputs = {
+        worker_role_name             = "cntlp-aws-worker-node"
+        worker_instance_profile_name = "cntlp-aws-worker-node"
+      }
+    }
+  }
+
+  override_data {
+    target = data.aws_ami.boot_test
+    values = {
+      id = "ami-00000000000000000"
+    }
+  }
+
+  override_resource {
+    target          = aws_secretsmanager_secret.worker_bootstrap
+    override_during = plan
+    values = {
+      arn  = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:cntlp-aws-cicd-worker-bootstrap-mock"
+      name = "cntlp-aws-cicd-worker-bootstrap"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.packer_assume_role
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.packer_ssm
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.worker_bootstrap_secret
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  assert {
+    condition = (
+      aws_secretsmanager_secret.worker_bootstrap[0].name == "cntlp-aws-cicd-worker-bootstrap"
+      && aws_secretsmanager_secret.worker_bootstrap[0].recovery_window_in_days == 0
+      && aws_secretsmanager_secret.worker_bootstrap[0].tags["lifecycle"] == "temporary"
+      && aws_secretsmanager_secret.worker_bootstrap[0].tags["expires-on"] == "2099-12-31"
+    )
+    error_message = "The bootstrap Secret container must be temporary and follow the approved naming convention."
+  }
+
+  assert {
+    condition = (
+      aws_iam_role_policy.worker_bootstrap_secret[0].role == "cntlp-aws-worker-node"
+      && aws_instance.boot_test[0].iam_instance_profile == "cntlp-aws-worker-node"
+      && toset(aws_instance.boot_test[0].vpc_security_group_ids) == toset([
+        "sg-00000000000000001",
+        "sg-00000000000000002",
+      ])
+    )
+    error_message = "The automatic join test must use the real Service Worker IAM and Security Group boundary."
+  }
+
+  assert {
+    condition = (
+      strcontains(aws_instance.boot_test[0].user_data, "/usr/local/sbin/cntlp-worker-bootstrap")
+      && strcontains(aws_instance.boot_test[0].user_data, "cntlp-aws-wk-99")
+      && !strcontains(aws_instance.boot_test[0].user_data, "tskey-")
+      && length(regexall("[a-z0-9]{6}\\.[a-z0-9]{16}", aws_instance.boot_test[0].user_data)) == 0
+    )
+    error_message = "The automatic join user data must invoke the bootstrap runner without embedding either credential."
+  }
+}
