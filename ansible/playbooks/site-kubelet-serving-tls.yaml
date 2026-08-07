@@ -1,0 +1,23 @@
+# 기존 kubeadm 노드 한 대에 CA-signed kubelet serving certificate 요청을 켠다.
+#
+# 안전장치 때문에 반드시 --limit으로 정확히 한 노드만 골라야 한다. 이
+# 플레이북은 CSR을 승인하지 않는다. 실행 후 관리자가 내용을 검증하고 별도
+# 명령으로 승인해야 한다.
+---
+- name: kubelet serving TLS bootstrap 순차 적용
+  hosts: role_control_plane:platform_aws:platform_gcp:platform_onp
+  become: true
+  gather_facts: true
+  serial: 1
+  vars_files:
+    - ../vars/cluster.yml
+  pre_tasks:
+    - name: 한 번에 정확히 한 노드만 선택했는지 확인
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+        fail_msg: >-
+          전체 노드 동시 재시작을 막기 위해 --limit <노드명>으로 정확히 한
+          노드만 선택해야 합니다.
+  roles:
+    - kubelet-serving-tls
