@@ -25,14 +25,37 @@ command -v python3 >/dev/null || {
 work_directory="$(mktemp -d "${TMPDIR:-/tmp}/cntlp-automatic-join.XXXXXX")"
 node_file="${work_directory}/node.json"
 pod_file="${work_directory}/pods.json"
+verification_file="${work_directory}/verification.txt"
+verification_error_file="${work_directory}/verification-error.txt"
 trap 'rm -rf -- "${work_directory}"' EXIT
 
-tailscale ssh "ubuntu@${control_plane_host}" \
-  "kubectl get node '${node_name}' -o json" >"${node_file}"
-tailscale ssh "ubuntu@${control_plane_host}" \
-  "kubectl get pods -A --field-selector spec.nodeName='${node_name}' -o json" >"${pod_file}"
+node_seen=false
+for attempt in $(seq 1 24); do
+  if tailscale ssh "ubuntu@${control_plane_host}" \
+    "kubectl get node '${node_name}' -o json" >"${node_file}" 2>/dev/null; then
+    node_seen=true
+    break
+  fi
+  sleep 5
+done
 
-python3 - "${node_file}" "${pod_file}" <<'PY'
+if [[ "${node_seen}" != true ]]; then
+  printf 'AUTOMATIC_JOIN_FAILED node=%s checks=node-registration\n' "${node_name}" >&2
+  exit 1
+fi
+
+tailscale ssh "ubuntu@${control_plane_host}" \
+  "kubectl wait --for=condition=Ready node/'${node_name}' --timeout=5m" >/dev/null
+
+verification_succeeded=false
+for attempt in $(seq 1 60); do
+  tailscale ssh "ubuntu@${control_plane_host}" \
+    "kubectl get node '${node_name}' -o json" >"${node_file}"
+  tailscale ssh "ubuntu@${control_plane_host}" \
+    "kubectl get pods -A --field-selector spec.nodeName='${node_name}' -o json" >"${pod_file}"
+
+  if python3 - "${node_file}" "${pod_file}" \
+    >"${verification_file}" 2>"${verification_error_file}" <<'PY'
 import json
 import pathlib
 import sys
@@ -68,10 +91,13 @@ checks = {
     "tailscale_internal_ip": internal_ip.startswith("100."),
 }
 
-running_pods = {
+ready_pods = {
     (item["metadata"]["namespace"], item["metadata"]["name"])
     for item in pods.get("items", [])
-    if item.get("status", {}).get("phase") == "Running"
+    if any(
+        condition.get("type") == "Ready" and condition.get("status") == "True"
+        for condition in item.get("status", {}).get("conditions", [])
+    )
 }
 required_prefixes = {
     "calico-node": ("calico-system", "calico-node-"),
@@ -83,7 +109,7 @@ required_prefixes = {
 for label, (namespace, prefix) in required_prefixes.items():
     checks[label] = any(
         pod_namespace == namespace and pod_name.startswith(prefix)
-        for pod_namespace, pod_name in running_pods
+        for pod_namespace, pod_name in ready_pods
     )
 
 failed = [label for label, passed in checks.items() if not passed]
@@ -97,6 +123,20 @@ print(f"provider_id={provider_id}")
 print("daemonsets=ready")
 print("AUTOMATIC_JOIN_OK")
 PY
+  then
+    verification_succeeded=true
+    break
+  fi
+
+  sleep 5
+done
+
+if [[ "${verification_succeeded}" != true ]]; then
+  cat "${verification_error_file}" >&2
+  exit 1
+fi
+
+cat "${verification_file}"
 
 tailscale ssh "ubuntu@${node_name}" \
   "sudo test -s /var/lib/cntlp/bootstrap-complete && sudo cat /var/lib/cntlp/bootstrap-complete"
