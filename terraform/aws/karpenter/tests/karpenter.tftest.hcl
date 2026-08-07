@@ -57,3 +57,73 @@ run "packer_builder_foundation" {
     error_message = "The Packer builder must use the existing private subnet."
   }
 }
+
+run "golden_ami_boot_test" {
+  command = plan
+
+  variables {
+    enable_boot_test     = true
+    boot_test_ami_name   = "cntlp-aws-cicd-k8s-worker-abcdef0"
+    boot_test_expires_on = "2099-12-31"
+  }
+
+  override_data {
+    target = data.terraform_remote_state.network
+    values = {
+      outputs = {
+        vpc_id             = "vpc-00000000000000000"
+        private_subnet_ids = ["subnet-00000000000000000"]
+      }
+    }
+  }
+
+  override_data {
+    target = data.aws_ami.boot_test
+    values = {
+      id = "ami-00000000000000000"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.packer_assume_role
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.packer_ssm
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  assert {
+    condition = (
+      aws_instance.boot_test[0].ami == "ami-00000000000000000"
+      && aws_instance.boot_test[0].instance_type == "t3.small"
+      && aws_instance.boot_test[0].associate_public_ip_address == false
+    )
+    error_message = "The Boot Test must use the selected Golden AMI on one private t3.small instance."
+  }
+
+  assert {
+    condition = (
+      aws_instance.boot_test[0].metadata_options[0].http_tokens == "required"
+      && aws_instance.boot_test[0].metadata_options[0].http_put_response_hop_limit == 2
+      && aws_instance.boot_test[0].root_block_device[0].encrypted == true
+      && aws_instance.boot_test[0].root_block_device[0].delete_on_termination == true
+    )
+    error_message = "The Boot Test must require IMDSv2 and use an encrypted disposable root volume."
+  }
+
+  assert {
+    condition = (
+      aws_instance.boot_test[0].tags["Name"] == "cntlp-aws-cicd-worker-boot"
+      && aws_instance.boot_test[0].tags["role"] == "service"
+      && aws_instance.boot_test[0].tags["lifecycle"] == "temporary"
+      && aws_instance.boot_test[0].tags["expires-on"] == "2099-12-31"
+    )
+    error_message = "The Boot Test instance must follow the naming and temporary lifecycle tag conventions."
+  }
+}
