@@ -68,7 +68,7 @@
   ansible.builtin.command: journalctl --vacuum-time=1s
   changed_when: true
 
-# cloud-init이 다음 부팅을 최초 부팅으로 인식하게 하고 machine-id를 비운다.
+# cloud-init이 다음 부팅을 최초 부팅으로 인식하게 하고 machine-id를 초기화한다.
 # 이 태스크는 이미지 정리의 마지막 변경 작업이어야 한다.
 - name: cloud-init 상태와 machine-id 정리
   ansible.builtin.command:
@@ -94,6 +94,26 @@
       - golden_image_forbidden_paths.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 0
     fail_msg: Golden Image에 kubeadm 또는 Tailscale 노드 상태가 남아 있습니다.
 
-- name: machine-id가 비어 있는지 확인
-  ansible.builtin.command: test ! -s /etc/machine-id
-  changed_when: false
+- name: machine-id 파일 상태 확인
+  ansible.builtin.stat:
+    path: /etc/machine-id
+  register: golden_image_machine_id_file
+
+- name: machine-id 내용 확인
+  ansible.builtin.slurp:
+    src: /etc/machine-id
+  register: golden_image_machine_id
+  when: golden_image_machine_id_file.stat.exists
+
+# systemd 환경의 cloud-init은 machine-id를 빈 파일 또는
+# "uninitialized" 상태로 남길 수 있다.
+- name: machine-id 초기화 확인
+  ansible.builtin.assert:
+    that:
+      - >-
+        not golden_image_machine_id_file.stat.exists
+        or (
+          (golden_image_machine_id.content | default('') | b64decode | trim)
+          in ['', 'uninitialized']
+        )
+    fail_msg: cloud-init clean이 machine-id를 초기화하지 못했습니다.
