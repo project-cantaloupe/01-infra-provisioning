@@ -8,12 +8,14 @@
   gather_facts: true
   vars_files:
     - ../vars/cluster.yml
+  vars:
+    # Golden Image 전체 역할에서 같은 값을 보게 한다. role vars로만 주면 다음
+    # 역할에서는 vpn-mesh 기본값(true)으로 돌아가 노드 상태 정리가 중단된다.
+    tailscale_join: false
   roles:
     - role: common
     - role: security-hardening
     - role: containerd
     - role: kubeadm-common
     - role: vpn-mesh
-      vars:
-        tailscale_join: false
     - role: karpenter-image
