@@ -28,6 +28,10 @@ tailscale_hostname: "{{ ansible_facts.hostname }}"
 # AWS Control Plane은 inventories/aws/group_vars/role_control_plane.yml에서 덮어쓴다.
 tailscale_tags: "tag:cntlp-wk"
 
+# 기본값은 기존 동작을 유지한다. Tailnet HTTPS 이름을 직접 사용하는 플랫폼만
+# Inventory Group Variable에서 켠다.
+tailscale_accept_dns: false
+
 # 서브넷 라우터로 광고할 대역. 단일 클러스터라 노드 IP 도달성만으로는 부족하고
 # 파드 CIDR 까지 라우팅돼야 한다 (decisions/20260728_network-connectivity-and-access).
 #

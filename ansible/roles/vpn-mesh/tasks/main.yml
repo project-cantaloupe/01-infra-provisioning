@@ -100,8 +100,8 @@
         mode: "0600"
       no_log: true
 
-    # --accept-dns=false 인 이유: MagicDNS 가 /etc/resolv.conf 를 갈아치우면
-    # 클러스터 DNS(CoreDNS)와 충돌한다. 노드는 클러스터 DNS 를 봐야 한다.
+    # Host의 Tailscale HTTPS 이름은 MagicDNS로 해석한다. Pod의 Cluster DNS는
+    # kubelet과 CoreDNS가 별도로 제공하므로 Host의 Split DNS와 충돌하지 않는다.
     #
     # --advertise-routes 는 값이 있을 때만 붙인다. 빈 문자열로 넘기면
     # 기존에 광고 중이던 경로를 지워버린다.
@@ -112,7 +112,8 @@
               '--auth-key=file:' ~ tailscale_auth_key_path,
               '--hostname=' ~ tailscale_hostname,
               '--advertise-tags=' ~ tailscale_tags,
-              '--accept-dns=false',
+              '--accept-dns=' ~ ((tailscale_accept_dns | bool)
+                                  | ternary('true', 'false')),
               '--timeout=2m']
              + (['--ssh'] if tailscale_ssh | bool else [])
              + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
@@ -126,6 +127,44 @@
         path: "{{ tailscale_auth_key_path }}"
         state: absent
       no_log: true
+
+# 이미 가입된 노드에는 `tailscale up`을 다시 실행하지 않는다. `tailscale set`은
+# Machine Key, 태그와 라우팅 설정을 유지한 채 DNS 수용 설정만 갱신한다.
+- name: 현재 Tailscale DNS 수용 설정 조회
+  ansible.builtin.command: tailscale debug prefs
+  register: tailscale_prefs_before
+  changed_when: false
+  check_mode: false
+
+- name: Tailscale MagicDNS 수용 설정 적용
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - set
+      - >-
+        --accept-dns={{ (tailscale_accept_dns | bool)
+        | ternary('true', 'false') }}
+  when: >-
+    ((tailscale_prefs_before.stdout | from_json).CorpDNS | default(false) | bool)
+    != (tailscale_accept_dns | bool)
+  changed_when: true
+
+- name: Tailscale DNS 수용 설정 검증
+  ansible.builtin.command: tailscale debug prefs
+  register: tailscale_prefs_after
+  changed_when: false
+  check_mode: false
+
+- name: Tailscale DNS 수용 설정이 기대값인지 확인
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((tailscale_prefs_after.stdout | from_json).CorpDNS | default(false) | bool)
+        == (tailscale_accept_dns | bool)
+    fail_msg: >-
+      Tailscale DNS 수용 설정이 기대값과 다릅니다.
+      expected={{ tailscale_accept_dns | bool }},
+      actual={{ (tailscale_prefs_after.stdout | from_json).CorpDNS | default(false) }}
 
 # ── 결과 검증 ─────────────────────────────────────────────────
 
