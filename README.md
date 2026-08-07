@@ -43,6 +43,7 @@ Argo CD 설치와 최초 Root Application 등록은 클러스터 구성 뒤 별�
 | 문서 | 언제 |
 |---|---|
 | [docs/runbook-onp-vm-recreate.md](docs/runbook-onp-vm-recreate.md) | 온프렘 워커 VM을 지우고 다시 만들어 재조인할 때. 무엇이 멱등이고 무엇이 사람 손을 요구하는지 |
+| [docs/runbook-kubelet-serving-tls.md](docs/runbook-kubelet-serving-tls.md) | Metrics Server를 위해 kubelet serving 인증서를 노드 한 대씩 안전하게 전환할 때 |
 | [terraform/onp/README.md](terraform/onp/README.md) | Proxmox 사전 설정(API 토큰, snippets 콘텐츠 타입) |
 
 ## 구조

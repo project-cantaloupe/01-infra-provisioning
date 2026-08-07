@@ -30,3 +30,10 @@ networking:
   dnsDomain: "{{ kubernetes_dns_domain }}"
   serviceSubnet: "{{ kubernetes_service_cidr }}"
   podSubnet: "{{ kubernetes_pod_cidr }}"
+---
+# Metrics Server가 kubelet의 10250 HTTPS 인증서를 검증할 수 있게 한다.
+# kubelet-serving CSR은 kube-controller-manager가 자동 승인하지 않는다.
+# 노드명과 SAN을 검증한 뒤 운영자가 승인해야 인증서가 발급된다.
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+serverTLSBootstrap: true

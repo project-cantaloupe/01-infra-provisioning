@@ -1,0 +1,83 @@
+---
+- name: kubelet 설정 파일 존재 확인
+  ansible.builtin.stat:
+    path: /var/lib/kubelet/config.yaml
+  register: kubelet_config
+
+- name: 이미 조인된 kubeadm 노드인지 확인
+  ansible.builtin.assert:
+    that:
+      - kubelet_config.stat.exists
+      - kubelet_config.stat.isreg
+    fail_msg: >-
+      /var/lib/kubelet/config.yaml이 없습니다. 이 역할은 이미 조인된 kubeadm
+      노드에만 사용할 수 있습니다.
+
+- name: kubelet 서비스가 적용 전 정상인지 확인
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - kubelet
+  changed_when: false
+  check_mode: false
+
+- name: 기존 kubelet serving 인증서 정보 확인
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - /var/lib/kubelet/pki/kubelet.crt
+      - -noout
+      - -issuer
+      - -subject
+  register: kubelet_serving_certificate_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: kubelet serving TLS bootstrap 활성화
+  ansible.builtin.lineinfile:
+    path: /var/lib/kubelet/config.yaml
+    regexp: '^serverTLSBootstrap:'
+    line: 'serverTLSBootstrap: true'
+    insertafter: '^kind: KubeletConfiguration$'
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: kubelet 재시작
+
+- name: kubelet 재시작을 현재 노드에서만 실행
+  ansible.builtin.meta: flush_handlers
+
+- name: kubelet 서비스 복귀 확인
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - kubelet
+  register: kubelet_active
+  until: kubelet_active.stdout | trim == 'active'
+  retries: 12
+  delay: 5
+  changed_when: false
+  check_mode: false
+
+- name: kubelet HTTPS 포트 복귀 확인
+  ansible.builtin.wait_for:
+    host: "{{ tailscale_ipv4 }}"
+    port: 10250
+    state: started
+    timeout: 60
+
+- name: 다음 수동 검증 단계 안내
+  ansible.builtin.debug:
+    msg: |
+      {{ inventory_hostname }}의 kubelet이 복귀했습니다.
+      아직 CSR을 승인하지 않았습니다. Control Plane에서 pending
+      kubernetes.io/kubelet-serving CSR의 요청자·CN·Organization·SAN을
+      확인하고 승인한 뒤, Node Ready와 새 인증서를 검증하세요.
+      적용 전 인증서:
+      {{ kubelet_serving_certificate_before.stdout | default('확인 불가') }}
