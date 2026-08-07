@@ -18,4 +18,6 @@
     - role: containerd
     - role: kubeadm-common
     - role: vpn-mesh
+    - role: aws-cli
+    - role: karpenter-bootstrap
     - role: karpenter-image

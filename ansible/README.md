@@ -31,6 +31,8 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kuberne
 | `cni-calico` | Tigera Operator와 Calico VXLAN 네트워크 설치 |
 | `kubeadm-worker` | 단기 토큰 생성, Worker 가입, 토큰 폐기와 라벨 적용 |
 | `site-node-labels` | 수동 join 노드까지 필수 라벨과 providerID 계약 검증 |
+| `aws-cli` | Golden AMI에 버전 고정 AWS CLI v2 설치 |
+| `karpenter-bootstrap` | 신규 EC2의 Tailscale 가입 후 kubeadm join 실행기 설치 |
 | `karpenter-image` | AMI 캡처 전 kubeadm·Tailscale·machine-id·SSH host key 정리 |
 
 클러스터 이름은 `cntlp-k8s`이고 Kubernetes API와 각 노드의

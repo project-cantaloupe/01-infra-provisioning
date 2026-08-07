@@ -10,6 +10,8 @@ Karpenter가 생성할 Worker의 공통 OS와 패키지를 AMI에 미리 설치�
 - kubelet, kubeadm, kubectl v1.36.3
 - Kubernetes 커널 모듈, sysctl, swap 비활성화
 - Tailscale 에이전트와 노드 방화벽
+- AWS CLI v2 2.36.18
+- Secret 값을 포함하지 않는 Worker bootstrap 실행기
 
 ## 포함하지 않는 항목
 

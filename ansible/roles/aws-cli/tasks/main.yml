@@ -1,0 +1,65 @@
+---
+- name: AWS CLI가 지원하는 아키텍처인지 확인
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.architecture in aws_cli_architecture_map
+    fail_msg: "AWS CLI v2 설치를 지원하지 않는 아키텍처입니다: {{ ansible_facts.architecture }}"
+
+- name: AWS CLI installer 압축 해제 도구 설치
+  ansible.builtin.apt:
+    name: unzip
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: AWS CLI installer 임시 디렉터리 생성
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: cntlp-aws-cli-
+  register: aws_cli_installer_directory
+
+- name: AWS CLI 공식 versioned installer 실행
+  block:
+    - name: AWS CLI 공식 installer 다운로드
+      ansible.builtin.get_url:
+        url: >-
+          https://awscli.amazonaws.com/awscli-exe-linux-{{ aws_cli_architecture_map[ansible_facts.architecture] }}-{{ aws_cli_version }}.zip
+        dest: "{{ aws_cli_installer_directory.path }}/awscliv2.zip"
+        mode: "0644"
+
+    - name: AWS CLI installer 압축 해제
+      ansible.builtin.unarchive:
+        src: "{{ aws_cli_installer_directory.path }}/awscliv2.zip"
+        dest: "{{ aws_cli_installer_directory.path }}"
+        remote_src: true
+
+    - name: AWS CLI 설치
+      ansible.builtin.command:
+        argv:
+          - "{{ aws_cli_installer_directory.path }}/aws/install"
+          - --bin-dir
+          - /usr/local/bin
+          - --install-dir
+          - /usr/local/aws-cli
+        creates: "/usr/local/aws-cli/v2/{{ aws_cli_version }}"
+
+  always:
+    - name: AWS CLI installer 임시 디렉터리 제거
+      ansible.builtin.file:
+        path: "{{ aws_cli_installer_directory.path }}"
+        state: absent
+
+- name: AWS CLI 설치 버전 확인
+  ansible.builtin.command: /usr/local/bin/aws --version
+  register: aws_cli_installed_version
+  changed_when: false
+
+- name: AWS CLI 고정 버전 확인
+  ansible.builtin.assert:
+    that:
+      - >-
+        'aws-cli/' ~ aws_cli_version in
+        (aws_cli_installed_version.stdout ~ aws_cli_installed_version.stderr)
+    fail_msg: >-
+      AWS CLI 설치 버전이 예상과 다릅니다:
+      {{ aws_cli_installed_version.stdout }}{{ aws_cli_installed_version.stderr }}
