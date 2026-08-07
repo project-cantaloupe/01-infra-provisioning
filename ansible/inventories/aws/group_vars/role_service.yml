@@ -1,2 +1,6 @@
 ---
 kubernetes_node_role: service
+
+# Audio Image는 Tailscale HTTPS Harbor 이름을 사용한다. Host의 Split DNS 설정이며
+# Pod는 kubelet의 clusterDNS를 통해 CoreDNS를 계속 사용한다.
+tailscale_accept_dns: true

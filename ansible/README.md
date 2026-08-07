@@ -23,7 +23,7 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kuberne
 |---|---|
 | `common` | swap 영구 비활성화, 커널 모듈과 sysctl 설정 |
 | `security-hardening` | SSH 보안, UFW, Tailscale-Calico 재귀 루프 차단 |
-| `vpn-mesh` | Tailscale 설치·가입, 노드의 Tailscale IPv4 수집 |
+| `vpn-mesh` | Tailscale 설치·가입, MagicDNS Split DNS와 노드 IPv4 설정 |
 | `tailscale-serve` | Argo CD NodePort를 MagicDNS HTTPS로 연결 |
 | `containerd` | containerd 설치, `SystemdCgroup=true` 설정 |
 | `kubeadm-common` | kubelet·kubeadm·kubectl 버전 고정 및 hold |
@@ -44,6 +44,7 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kuberne
 - `/etc/kubernetes/admin.conf`가 있으면 `kubeadm init`을 다시 실행하지 않는다.
 - `/etc/kubernetes/kubelet.conf`가 있으면 Worker를 다시 join하지 않는다.
 - 이미 tailnet에 가입한 노드는 `tailscale up`을 다시 실행하지 않는다.
+- 이미 가입한 노드의 MagicDNS 수용 설정은 `tailscale set`으로 필요한 경우만 갱신한다.
 - 기존 수동 구축 Worker에 `--node-ip` 영구 설정이 없으면 한 번 보완하고
   kubelet을 재시작한다.
 - 정상 재구성 과정에서는 `kubeadm reset`을 실행하지 않는다.
