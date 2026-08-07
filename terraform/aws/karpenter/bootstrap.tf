@@ -4,7 +4,7 @@ resource "aws_secretsmanager_secret" "worker_bootstrap" {
   count = var.enable_bootstrap_foundation ? 1 : 0
 
   name                    = local.bootstrap_secret_name
-  description             = "Short-lived Tailscale and kubeadm credentials for one Worker bootstrap test"
+  description             = "Short-lived Tailscale and kubeadm credentials for Karpenter Worker lifecycle tests"
   recovery_window_in_days = 0
 
   tags = {

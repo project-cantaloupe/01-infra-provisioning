@@ -5,18 +5,28 @@ locals {
 
   packer_name = "${local.name_prefix}-cicd-packer"
 
-  bootstrap_secret_name = "${local.name_prefix}-cicd-worker-bootstrap"
-  boot_test_node_name   = "${local.name_prefix}-wk-99"
+  bootstrap_secret_name   = "${local.name_prefix}-cicd-worker-bootstrap"
+  boot_test_node_name     = "${local.name_prefix}-wk-99"
+  kubernetes_cluster_name = var.kubernetes_cluster_name
+
+  controller_policy_name = "${local.name_prefix}-cicd-karpenter-controller"
+  needs_compute_state    = var.enable_bootstrap_foundation || var.enable_controller_foundation
 
   # 기존 Compute state에는 Instance Profile 전용 output이 아직 없을 수 있다.
   # Compute Stack은 Worker Role과 Instance Profile에 같은 이름을 사용하므로
   # 현재 output을 fallback으로 두고 파괴적인 Compute apply를 요구하지 않는다.
-  worker_role_name = var.enable_bootstrap_foundation ? (
+  worker_role_name = local.needs_compute_state ? (
     data.terraform_remote_state.compute[0].outputs.worker_role_name
   ) : null
-  worker_instance_profile_name = var.enable_bootstrap_foundation ? try(
+  worker_role_arn = local.needs_compute_state ? (
+    data.terraform_remote_state.compute[0].outputs.worker_role_arn
+  ) : null
+  worker_instance_profile_name = local.needs_compute_state ? try(
     data.terraform_remote_state.compute[0].outputs.worker_instance_profile_name,
     data.terraform_remote_state.compute[0].outputs.worker_role_name,
+  ) : null
+  control_plane_role_name = var.enable_controller_foundation ? (
+    data.terraform_remote_state.compute[0].outputs.control_plane_role_name
   ) : null
 
   default_tags = {

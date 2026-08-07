@@ -24,6 +24,23 @@ variable "owner" {
   }
 }
 
+variable "kubernetes_cluster_name" {
+  description = "Self-managed Kubernetes cluster name used by Karpenter discovery tags"
+  type        = string
+  default     = "cntlp-k8s"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]+(-[a-z0-9]+)*$", var.kubernetes_cluster_name))
+    error_message = "kubernetes_cluster_name must use lowercase kebab-case."
+  }
+}
+
+variable "enable_controller_foundation" {
+  description = "Attach the scoped Karpenter controller policy to the existing Control Plane role"
+  type        = bool
+  default     = false
+}
+
 variable "enable_boot_test" {
   description = "Create one temporary EC2 instance to verify the Golden AMI first boot"
   type        = bool

@@ -1,8 +1,8 @@
 # AWS Karpenter Foundation
 
 Self-managed Kubernetes에서 Karpenter를 검증하기 위한 AWS 기반 자원을 관리한다.
-현재 단계는 Golden Image를 만드는 임시 Packer Builder의 IAM과 네트워크만 만든다.
-Karpenter Controller 권한과 동적 Worker Node 권한은 별도 단계에서 추가한다.
+Golden Image Builder와 자동 가입 Secret, Karpenter Controller의 AWS 최소 권한을
+기존 Network·Compute 상태와 분리해 관리한다.
 
 ## 현재 생성 자원
 
@@ -11,11 +11,18 @@ Karpenter Controller 권한과 동적 Worker Node 권한은 별도 단계에서 
 - inbound 없이 outbound만 허용하는 Packer Builder Security Group
 - 기본값은 꺼져 있는 Golden AMI Boot Test EC2
 - 기본값은 꺼져 있는 자동 가입용 Secret 컨테이너와 Worker 최소 조회 권한
+- 기본값은 꺼져 있는 Karpenter Controller EC2 lifecycle 최소 권한
 
 기본 상태에는 시간당 과금 자원이 없다. `packer build`를 실행할 때는
 임시 `t3.small` EC2와 30 GiB gp3가 생성되고, Boot Test를 켜면 검증하는
 동안 동일한 사양의 EC2와 Root EBS 비용이 발생한다. 성공한 AMI의 EBS
 Snapshot 저장 비용은 계속 발생한다.
+
+Karpenter Controller는 Self-managed Kubernetes라 IRSA나 EKS Pod Identity를
+사용하지 못한다. `enable_controller_foundation=true`일 때만 기존 Control Plane
+Instance Profile에 정책을 붙이며, Controller Pod는 Control Plane Node에 고정한다.
+정책은 Karpenter 소유 태그가 붙은 EC2와 Launch Template만 삭제할 수 있고 기존
+Service Worker Role만 EC2에 전달할 수 있다.
 
 ## 검증과 적용
 
@@ -34,6 +41,27 @@ terraform -chdir=terraform/aws/karpenter plan
 apply한다. Golden Image 빌드는
 [`packer/aws/kubernetes-worker/README.md`](../../../packer/aws/kubernetes-worker/README.md)를
 따른다.
+
+## Karpenter Controller 기반
+
+Karpenter `1.14.0`은 Kubernetes `1.36`을 지원한다. Controller를 설치하기 전
+아래 계획에서 기존 Control Plane Role에 inline Policy 하나만 추가되는지
+확인한다.
+
+```bash
+terraform -chdir=terraform/aws/karpenter plan \
+  -var='enable_controller_foundation=true'
+```
+
+이 단계는 EC2, SQS, EKS 자원을 만들지 않는다. 검증용 NodePool은 기존 Worker
+Instance Profile, Private Subnet, Worker Security Group과 정확한 Golden AMI를
+재사용한다. Kubernetes Controller와 NodePool 매니페스트는
+`02-k8s-manifests` 저장소가 관리한다.
+
+초기 E2E는 `cntlp-aws-wk-99` 한 대만 허용한다. 이 고정 이름은 Karpenter가
+EC2를 생성·가입·삭제하는 경로를 검증하기 위한 예약 이름이며 다중 NodePool
+운영 계약이 아니다. 다중 노드 전환 전에는 고유한 두 자리 Node 번호 할당과
+Tailscale auth key·kubeadm token 회전 방식을 별도로 확정해야 한다.
 
 ## Golden AMI Boot Test
 

@@ -32,3 +32,18 @@ output "bootstrap_secret_arn" {
   description = "Temporary bootstrap Secret ARN allowed by the Worker Role, or null when disabled"
   value       = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.worker_bootstrap[0].arn : null
 }
+
+output "kubernetes_cluster_name" {
+  description = "Self-managed Kubernetes cluster name configured for Karpenter"
+  value       = local.kubernetes_cluster_name
+}
+
+output "worker_instance_profile_name" {
+  description = "Existing Worker Instance Profile selected for Karpenter nodes, or null when disabled"
+  value       = local.needs_compute_state ? local.worker_instance_profile_name : null
+}
+
+output "controller_policy_name" {
+  description = "Inline Karpenter controller policy attached to the Control Plane role, or null when disabled"
+  value       = var.enable_controller_foundation ? aws_iam_role_policy.karpenter_controller[0].name : null
+}

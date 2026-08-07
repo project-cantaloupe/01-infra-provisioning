@@ -157,6 +157,7 @@ run "automatic_join_boot_test" {
     values = {
       outputs = {
         worker_role_name             = "cntlp-aws-worker-node"
+        worker_role_arn              = "arn:aws:iam::123456789012:role/cntlp-aws-worker-node"
         worker_instance_profile_name = "cntlp-aws-worker-node"
       }
     }
@@ -229,5 +230,66 @@ run "automatic_join_boot_test" {
       && length(regexall("[a-z0-9]{6}\\.[a-z0-9]{16}", aws_instance.boot_test[0].user_data)) == 0
     )
     error_message = "The automatic join user data must invoke the bootstrap runner without embedding either credential."
+  }
+}
+
+run "karpenter_controller_foundation" {
+  command = plan
+
+  variables {
+    enable_controller_foundation = true
+  }
+
+  override_data {
+    target = data.terraform_remote_state.network
+    values = {
+      outputs = {
+        vpc_id             = "vpc-00000000000000000"
+        private_subnet_ids = ["subnet-00000000000000000"]
+      }
+    }
+  }
+
+  override_data {
+    target = data.terraform_remote_state.compute
+    values = {
+      outputs = {
+        worker_role_name             = "cntlp-aws-worker-node"
+        worker_role_arn              = "arn:aws:iam::123456789012:role/cntlp-aws-worker-node"
+        worker_instance_profile_name = "cntlp-aws-worker-node"
+        control_plane_role_name      = "cntlp-aws-control-plane-node"
+      }
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.packer_assume_role
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.packer_ssm
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.karpenter_controller
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  assert {
+    condition = (
+      aws_iam_role_policy.karpenter_controller[0].name == "cntlp-aws-cicd-karpenter-controller"
+      && aws_iam_role_policy.karpenter_controller[0].role == "cntlp-aws-control-plane-node"
+      && output.worker_instance_profile_name == "cntlp-aws-worker-node"
+      && output.kubernetes_cluster_name == "cntlp-k8s"
+    )
+    error_message = "The Karpenter controller policy must use the existing Control Plane and Worker IAM boundaries."
   }
 }
