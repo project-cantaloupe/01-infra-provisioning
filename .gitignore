@@ -45,3 +45,8 @@ ansible/.venv/
 
 # Ansible Galaxy에서 내려받은 로컬 Collection
 ansible/.collections/
+
+# Packer의 환경별 입력과 로컬 빌드 산출물
+*.pkrvars.hcl
+packer_cache/
+packer/**/manifest.json

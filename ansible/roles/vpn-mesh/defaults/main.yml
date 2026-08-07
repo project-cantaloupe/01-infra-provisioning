@@ -5,6 +5,11 @@
 # 사전 준비 플레이에서는 패키지를 관리하고 후속 플레이에서는 상태만 재확인한다.
 tailscale_manage_packages: true
 
+# Golden Image 빌드에서는 패키지만 설치하고 tailnet에는 가입하지 않는다.
+# 이미지에 machine key가 들어가면 그 이미지로 만든 모든 노드가 같은 장치
+# 신원을 공유하므로 실제 노드가 부팅된 뒤에만 가입해야 한다.
+tailscale_join: true
+
 # tailnet auth key. **절대 여기 적지 않는다.** 실행 환경에서 받는다:
 #   CNTLP_TAILSCALE_AUTH_KEY=tskey-auth-... ansible-playbook ...
 #
