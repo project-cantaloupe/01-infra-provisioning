@@ -246,7 +246,7 @@ resource "aws_iam_role_policy" "audio_node" {
 
 # CloudWatch Exporter는 AWS service Worker에서 실행하고 EC2 Instance Profile의
 # 단기 자격증명을 사용한다. S3 객체나 로그를 읽지 않고 CloudWatch metric과
-# exporter 검증에 필요한 EC2 metadata만 조회한다.
+# metric만 조회한다.
 data "aws_iam_policy_document" "finops_cloudwatch_read" {
   count = var.enable_node_role_policy ? 1 : 0
 
@@ -257,10 +257,6 @@ data "aws_iam_policy_document" "finops_cloudwatch_read" {
       "cloudwatch:GetMetricData",
       "cloudwatch:GetMetricStatistics",
       "cloudwatch:ListMetrics",
-      "ec2:DescribeInstances",
-      "ec2:DescribeRegions",
-      "ec2:DescribeTags",
-      "tag:GetResources",
     ]
     resources = ["*"]
   }
