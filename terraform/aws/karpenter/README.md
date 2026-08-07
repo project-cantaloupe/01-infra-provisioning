@@ -53,6 +53,18 @@ terraform -chdir=terraform/aws/karpenter plan \
 미포함만 확인한다. 임시 호스트명은 Node 명명 규칙의 예약 번호인
 `cntlp-aws-wk-99`를 사용한다.
 
+EC2 상태 검사와 SSM Agent `Online`을 확인한 뒤 저장소에 남긴 검증
+스크립트를 실행한다.
+
+```bash
+AWS_PROFILE=cntlp \
+  terraform/aws/karpenter/scripts/verify-boot-test.sh
+```
+
+스크립트는 SSM Run Command로 읽기 전용 검증을 수행한다. 첫 부팅에서
+`/etc/cni/net.d`가 빈 디렉터리로 다시 생성될 수 있으므로, 디렉터리 존재가
+아니라 CNI 설정 파일이 0개인지 확인한다.
+
 검증이 끝나면 `enable_boot_test` 인자 없이 다시 plan·apply해 해당
 EC2와 Root EBS를 삭제한다. AMI와 Snapshot, Packer Builder IAM·Security Group은
 삭제하지 않는다.
