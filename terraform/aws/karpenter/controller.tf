@@ -230,6 +230,16 @@ data "aws_iam_policy_document" "karpenter_controller" {
     resources = ["*"]
   }
 
+  # Karpenter 1.14의 Instance Profile garbage collector는 사전 지정된 Profile을
+  # 사용해도 전체 목록을 조회한다. IAM List API는 Resource 수준 제한을 지원하지
+  # 않으므로 공식 Controller 정책과 같이 읽기 동작 하나만 별도로 허용한다.
+  statement {
+    sid       = "AllowUnscopedInstanceProfileListAction"
+    effect    = "Allow"
+    actions   = ["iam:ListInstanceProfiles"]
+    resources = ["*"]
+  }
+
   statement {
     sid       = "AllowWorkerInstanceProfileRead"
     effect    = "Allow"
