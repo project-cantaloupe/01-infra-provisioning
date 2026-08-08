@@ -23,14 +23,24 @@ output "boot_test_ami_id" {
   value       = var.enable_boot_test ? data.aws_ami.boot_test[0].id : null
 }
 
-output "bootstrap_secret_name" {
-  description = "Temporary bootstrap Secret name whose value must be inserted outside Terraform, or null when disabled"
-  value       = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.worker_bootstrap[0].name : null
+output "tailscale_oauth_secret_name" {
+  description = "Tailscale OAuth Secret name whose value must be inserted outside Terraform, or null when disabled"
+  value       = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.tailscale_oauth[0].name : null
 }
 
-output "bootstrap_secret_arn" {
-  description = "Temporary bootstrap Secret ARN allowed by the Worker Role, or null when disabled"
-  value       = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.worker_bootstrap[0].arn : null
+output "tailscale_oauth_secret_arn" {
+  description = "Tailscale OAuth Secret ARN allowed by the Worker Role, or null when disabled"
+  value       = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.tailscale_oauth[0].arn : null
+}
+
+output "kubeadm_join_secret_name" {
+  description = "Rotated kubeadm join Secret name, or null when disabled"
+  value       = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.kubeadm_join[0].name : null
+}
+
+output "kubeadm_join_secret_arn" {
+  description = "Rotated kubeadm join Secret ARN allowed by the Worker Role, or null when disabled"
+  value       = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.kubeadm_join[0].arn : null
 }
 
 output "kubernetes_cluster_name" {
@@ -46,4 +56,9 @@ output "worker_instance_profile_name" {
 output "controller_policy_name" {
   description = "Inline Karpenter controller policy attached to the Control Plane role, or null when disabled"
   value       = var.enable_controller_foundation ? aws_iam_role_policy.karpenter_controller[0].name : null
+}
+
+output "kubeadm_rotator_policy_name" {
+  description = "Inline kubeadm token rotator policy attached to the Control Plane role, or null when disabled"
+  value       = var.enable_bootstrap_foundation ? aws_iam_role_policy.kubeadm_token_rotator[0].name : null
 }

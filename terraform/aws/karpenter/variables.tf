@@ -48,7 +48,7 @@ variable "enable_boot_test" {
 }
 
 variable "enable_bootstrap_foundation" {
-  description = "Create temporary Secret metadata and least-privilege Worker IAM access for the automatic join test"
+  description = "Create Tailscale OAuth and rotated kubeadm Secret containers with least-privilege Worker and Control Plane IAM"
   type        = bool
   default     = false
 }
@@ -68,7 +68,7 @@ variable "boot_test_join_cluster" {
 }
 
 variable "bootstrap_expires_on" {
-  description = "Expiration date tag for the temporary bootstrap Secret in YYYY-MM-DD format"
+  description = "Expiration date tag for temporary bootstrap credential Secrets in YYYY-MM-DD format"
   type        = string
   default     = ""
 

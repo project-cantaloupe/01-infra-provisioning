@@ -1,7 +1,7 @@
 # AWS Karpenter Foundation
 
 Self-managed Kubernetes에서 Karpenter를 검증하기 위한 AWS 기반 자원을 관리한다.
-Golden Image Builder와 자동 가입 Secret, Karpenter Controller의 AWS 최소 권한을
+Golden Image Builder, 자동 가입 자격 증명, Karpenter Controller의 AWS 최소 권한을
 기존 Network·Compute 상태와 분리해 관리한다.
 
 ## 현재 생성 자원
@@ -10,7 +10,8 @@ Golden Image Builder와 자동 가입 Secret, Karpenter Controller의 AWS 최소
 - SSM managed instance 및 Session Manager 연결 최소 inline 권한
 - inbound 없이 outbound만 허용하는 Packer Builder Security Group
 - 기본값은 꺼져 있는 Golden AMI Boot Test EC2
-- 기본값은 꺼져 있는 자동 가입용 Secret 컨테이너와 Worker 최소 조회 권한
+- 기본값은 꺼져 있는 Tailscale OAuth·kubeadm Join Secret과 최소 IAM 권한
+- kubeadm Join Secret만 갱신하는 Control Plane inline 권한
 - 기본값은 꺼져 있는 Karpenter Controller EC2 lifecycle 최소 권한
 
 기본 상태에는 시간당 과금 자원이 없다. `packer build`를 실행할 때는
@@ -60,8 +61,7 @@ Instance Profile, Private Subnet, Worker Security Group과 정확한 Golden AMI�
 
 초기 E2E는 `cntlp-aws-wk-99` 한 대만 허용한다. 이 고정 이름은 Karpenter가
 EC2를 생성·가입·삭제하는 경로를 검증하기 위한 예약 이름이며 다중 NodePool
-운영 계약이 아니다. 다중 노드 전환 전에는 고유한 두 자리 Node 번호 할당과
-Tailscale auth key·kubeadm token 회전 방식을 별도로 확정해야 한다.
+운영 계약이 아니다. 현재 NodePool의 최대 Node 수도 1로 제한한다.
 
 ## Golden AMI Boot Test
 
@@ -77,7 +77,7 @@ terraform -chdir=terraform/aws/karpenter plan \
   -var='boot_test_expires_on=2099-12-31'
 ```
 
-이 단계에서는 Tailscale auth key와 kubeadm join token을 주입하지 않는다.
+이 단계에서는 Tailscale OAuth Client Secret과 kubeadm join token을 주입하지 않는다.
 `cloud-init`, machine-id, SSH host key, containerd, kubelet, tailscaled와 기존 Node 상태
 미포함만 확인한다. 임시 호스트명은 Node 명명 규칙의 예약 번호인
 `cntlp-aws-wk-99`를 사용한다.
@@ -98,17 +98,23 @@ AWS_PROFILE=cntlp \
 EC2와 Root EBS를 삭제한다. AMI와 Snapshot, Packer Builder IAM·Security Group은
 삭제하지 않는다.
 
-## Tailscale과 kubeadm 자동 가입 검증
+## Tailscale과 kubeadm 자동 가입 자격 증명
 
 기본 Boot Test가 성공한 다음, 같은 예약 이름 `cntlp-aws-wk-99` 한 대로
 Tailscale 가입과 kubeadm join을 검증한다. 이 단계는 Karpenter Controller나
 다중 Node 명명 로직을 검증하지 않는다.
 
-Terraform은 Secret 컨테이너와 해당 Secret 하나를 읽는 Worker IAM 권한만
-관리한다. Tailscale auth key와 kubeadm bootstrap token 값은 Terraform 변수,
-state, EC2 user data에 넣지 않는다. 기존 Compute state가 아직 Instance Profile
-전용 output을 갖지 않아도, 현재 계약상 Worker Role과 Instance Profile 이름이
-같으므로 파괴적인 Compute apply 없이 기존 output을 사용할 수 있다.
+Terraform은 다음 경계만 관리하고 Secret 값은 Terraform 변수, state, AMI,
+EC2 user data에 넣지 않는다.
+
+- `cntlp-aws-cicd-tailscale-bootstrap`: `tag:cntlp-wk`로 제한한 OAuth Client Secret
+- `cntlp-aws-cicd-kubeadm-bootstrap`: Control Plane이 12시간마다 갱신하는 Join 정보
+- Service Worker Role: 두 Secret의 `GetSecretValue`만 허용
+- Control Plane Role: kubeadm Join Secret의 `PutSecretValue`만 허용
+
+기존 Compute state가 아직 Instance Profile 전용 output을 갖지 않아도, 현재
+계약상 Worker Role과 Instance Profile 이름이 같으므로 파괴적인 Compute apply
+없이 기존 output을 사용할 수 있다.
 
 ```bash
 terraform -chdir=terraform/aws/karpenter plan \
@@ -116,19 +122,45 @@ terraform -chdir=terraform/aws/karpenter plan \
   -var='bootstrap_expires_on=2099-12-31'
 ```
 
-계획에는 Secrets Manager Secret 하나와 기존 Service Worker Role에 붙는
-`secretsmanager:GetSecretValue` inline Policy 하나만 있어야 한다. 승인 후
-apply한 다음, 태그가 허용된 단기·ephemeral Tailscale auth key를 준비하고
-아래 스크립트를 실행한다. 키는 화면에 표시하거나 shell history에 넣지 않는다.
+계획에는 Secrets Manager Secret 두 개, Service Worker 조회 Policy 하나,
+Control Plane 갱신 Policy 하나만 있어야 한다. 승인 후 apply한 다음 Control Plane에
+회전 타이머를 구성한다.
+
+```bash
+cd /Users/kh/Github/cantaloupe/01-infra-provisioning/ansible
+source .venv/bin/activate
+
+ANSIBLE_CONFIG="$PWD/ansible.cfg" \
+  ansible-playbook -i inventories/aws/aws_ec2.yaml \
+  playbooks/site-karpenter-bootstrap-automation.yaml
+```
+
+Tailscale Admin Console에서 `auth_keys` scope와 `tag:cntlp-wk`만 허용한 OAuth
+Client를 만든다. Client Secret은 화면이나 shell history에 넣지 않고 아래
+스크립트의 숨김 입력에 한 번만 제공한다.
 
 ```bash
 AWS_PROFILE=cntlp \
   terraform/aws/karpenter/scripts/prepare-bootstrap-secret.sh
 ```
 
-스크립트는 Control Plane에서 TTL 30분 kubeadm token을 새로 만들고 Secret
-값을 AWS CLI로 직접 등록한다. 그다음 Golden AMI 이름을 지정해 자동 가입
-Boot Test를 계획한다.
+스크립트는 OAuth Client Secret을 전용 Secret에 등록하고 Control Plane 회전
+서비스를 즉시 한 번 실행한다. kubeadm token은 TTL 24시간이며 타이머가 12시간마다
+새 token과 Join 정보를 등록한다. 이전 token은 즉시 삭제하지 않고 자체 TTL까지
+유지해 회전 중 가입 공백을 방지한다.
+
+상태 확인은 Secret 값을 출력하지 않는 명령만 사용한다.
+
+```bash
+tailscale ssh ubuntu@cntlp-aws-cp-01 \
+  'systemctl list-timers cntlp-kubeadm-token-rotate.timer --no-pager && sudo systemctl status cntlp-kubeadm-token-rotate.service --no-pager'
+
+AWS_PROFILE=cntlp aws secretsmanager describe-secret \
+  --region ap-northeast-2 \
+  --secret-id cntlp-aws-cicd-kubeadm-bootstrap
+```
+
+그다음 Golden AMI 이름을 지정해 자동 가입 Boot Test를 계획한다.
 
 ```bash
 terraform -chdir=terraform/aws/karpenter plan \
@@ -147,16 +179,17 @@ terraform/aws/karpenter/scripts/verify-automatic-join.sh
 ```
 
 검증이 끝나면 cleanup 스크립트로 Node를 drain·delete하고 Tailscale에서
-logout하며 kubeadm token을 명시적으로 삭제한다.
+logout한다. 회전 중인 kubeadm token은 이후 Worker 가입을 위해 유지한다.
 
 ```bash
 AWS_PROFILE=cntlp \
   terraform/aws/karpenter/scripts/cleanup-automatic-join.sh
 ```
 
-그다음 모든 enable 인자 없이 karpenter Stack을 plan·apply해 Boot Test EC2,
-Root EBS, 임시 Secret과 inline Policy를 제거한다. cleanup 스크립트가 token을
-삭제하지 못해도 TTL 30분 뒤 자동 만료된다.
+그다음 `enable_boot_test` 없이 karpenter Stack을 plan·apply해 Boot Test EC2와
+Root EBS만 제거한다. 자동 확장 운영 중에는 bootstrap foundation과 Controller
+foundation을 유지한다. 프로젝트 종료 시 타이머를 먼저 중지한 뒤 foundation을
+비활성화해 Secret과 inline Policy를 제거한다.
 
 ## 삭제 경계
 
@@ -164,6 +197,7 @@ Root EBS, 임시 Secret과 inline Policy를 제거한다. cleanup 스크립트�
 terraform -chdir=terraform/aws/karpenter destroy
 ```
 
-이 명령은 Boot Test EC2가 남아 있으면 함께 삭제한 뒤 Packer Builder용
-IAM과 Security Group, bootstrap Secret과 inline Policy를 삭제한다. Packer가 만든 AMI와 EBS Snapshot,
-기존 EC2, VPC, Kubernetes Node는 삭제하지 않는다.
+이 명령은 Boot Test EC2가 남아 있으면 함께 삭제한 뒤 Packer Builder용 IAM과
+Security Group, bootstrap Secret과 inline Policy를 삭제한다. 먼저 Control Plane의
+`cntlp-kubeadm-token-rotate.timer`를 중지해야 한다. Packer가 만든 AMI와 EBS
+Snapshot, 기존 EC2, VPC, Kubernetes Node는 삭제하지 않는다.

@@ -1,0 +1,48 @@
+---
+- name: kubeadm token 회전 변수 확인
+  ansible.builtin.assert:
+    that:
+      - karpenter_token_rotator_aws_region | length > 0
+      - karpenter_token_rotator_secret_id | length > 0
+      - karpenter_token_rotator_token_ttl is match('^[1-9][0-9]*[mh]$')
+      - karpenter_token_rotator_secret_valid_seconds | int > 0
+    fail_msg: Karpenter kubeadm token 회전 설정을 확인하세요.
+
+- name: kubeadm token 회전 실행기 설치
+  ansible.builtin.copy:
+    src: cntlp-kubeadm-token-rotate
+    dest: /usr/local/sbin/cntlp-kubeadm-token-rotate
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: kubeadm token 회전 실행기 문법 검증
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -n
+      - /usr/local/sbin/cntlp-kubeadm-token-rotate
+  changed_when: false
+
+- name: kubeadm token 회전 systemd 구성 설치
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: cntlp-kubeadm-token-rotate.service.j2
+      dest: /etc/systemd/system/cntlp-kubeadm-token-rotate.service
+    - src: cntlp-kubeadm-token-rotate.timer.j2
+      dest: /etc/systemd/system/cntlp-kubeadm-token-rotate.timer
+  notify: systemd 설정 다시 읽기
+
+- name: systemd 변경 사항 즉시 적용
+  ansible.builtin.meta: flush_handlers
+
+- name: kubeadm token 회전 타이머 활성화
+  ansible.builtin.systemd_service:
+    name: cntlp-kubeadm-token-rotate.timer
+    enabled: true
+    state: started

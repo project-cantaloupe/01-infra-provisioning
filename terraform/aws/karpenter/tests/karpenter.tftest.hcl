@@ -159,6 +159,7 @@ run "automatic_join_boot_test" {
         worker_role_name             = "cntlp-aws-worker-node"
         worker_role_arn              = "arn:aws:iam::123456789012:role/cntlp-aws-worker-node"
         worker_instance_profile_name = "cntlp-aws-worker-node"
+        control_plane_role_name      = "cntlp-aws-control-plane-node"
       }
     }
   }
@@ -171,11 +172,20 @@ run "automatic_join_boot_test" {
   }
 
   override_resource {
-    target          = aws_secretsmanager_secret.worker_bootstrap
+    target          = aws_secretsmanager_secret.tailscale_oauth
     override_during = plan
     values = {
-      arn  = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:cntlp-aws-cicd-worker-bootstrap-mock"
-      name = "cntlp-aws-cicd-worker-bootstrap"
+      arn  = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:cntlp-aws-cicd-tailscale-bootstrap-mock"
+      name = "cntlp-aws-cicd-tailscale-bootstrap"
+    }
+  }
+
+  override_resource {
+    target          = aws_secretsmanager_secret.kubeadm_join
+    override_during = plan
+    values = {
+      arn  = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:cntlp-aws-cicd-kubeadm-bootstrap-mock"
+      name = "cntlp-aws-cicd-kubeadm-bootstrap"
     }
   }
 
@@ -194,7 +204,14 @@ run "automatic_join_boot_test" {
   }
 
   override_data {
-    target = data.aws_iam_policy_document.worker_bootstrap_secret
+    target = data.aws_iam_policy_document.worker_bootstrap_secrets
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.kubeadm_token_rotator
     values = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
     }
@@ -202,17 +219,22 @@ run "automatic_join_boot_test" {
 
   assert {
     condition = (
-      aws_secretsmanager_secret.worker_bootstrap[0].name == "cntlp-aws-cicd-worker-bootstrap"
-      && aws_secretsmanager_secret.worker_bootstrap[0].recovery_window_in_days == 0
-      && aws_secretsmanager_secret.worker_bootstrap[0].tags["lifecycle"] == "temporary"
-      && aws_secretsmanager_secret.worker_bootstrap[0].tags["expires-on"] == "2099-12-31"
+      aws_secretsmanager_secret.tailscale_oauth[0].name == "cntlp-aws-cicd-tailscale-bootstrap"
+      && aws_secretsmanager_secret.kubeadm_join[0].name == "cntlp-aws-cicd-kubeadm-bootstrap"
+      && aws_secretsmanager_secret.tailscale_oauth[0].recovery_window_in_days == 0
+      && aws_secretsmanager_secret.kubeadm_join[0].recovery_window_in_days == 0
+      && aws_secretsmanager_secret.tailscale_oauth[0].tags["lifecycle"] == "temporary"
+      && aws_secretsmanager_secret.kubeadm_join[0].tags["lifecycle"] == "temporary"
+      && aws_secretsmanager_secret.tailscale_oauth[0].tags["expires-on"] == "2099-12-31"
+      && aws_secretsmanager_secret.kubeadm_join[0].tags["expires-on"] == "2099-12-31"
     )
-    error_message = "The bootstrap Secret container must be temporary and follow the approved naming convention."
+    error_message = "Both bootstrap Secret containers must be temporary and follow the approved naming convention."
   }
 
   assert {
     condition = (
-      aws_iam_role_policy.worker_bootstrap_secret[0].role == "cntlp-aws-worker-node"
+      aws_iam_role_policy.worker_bootstrap_secrets[0].role == "cntlp-aws-worker-node"
+      && aws_iam_role_policy.kubeadm_token_rotator[0].role == "cntlp-aws-control-plane-node"
       && aws_instance.boot_test[0].iam_instance_profile == "cntlp-aws-worker-node"
       && toset(aws_instance.boot_test[0].vpc_security_group_ids) == toset([
         "sg-00000000000000001",
@@ -226,6 +248,10 @@ run "automatic_join_boot_test" {
     condition = (
       strcontains(aws_instance.boot_test[0].user_data, "/usr/local/sbin/cntlp-worker-bootstrap")
       && strcontains(aws_instance.boot_test[0].user_data, "cntlp-aws-wk-99")
+      && strcontains(aws_instance.boot_test[0].user_data, "cntlp-aws-cicd-tailscale-bootstrap")
+      && strcontains(aws_instance.boot_test[0].user_data, "cntlp-aws-cicd-kubeadm-bootstrap")
+      && strcontains(aws_instance.boot_test[0].user_data, "--tailscale-oauth-secret-id")
+      && strcontains(aws_instance.boot_test[0].user_data, "--kubeadm-join-secret-id")
       && !strcontains(aws_instance.boot_test[0].user_data, "tskey-")
       && length(regexall("[a-z0-9]{6}\\.[a-z0-9]{16}", aws_instance.boot_test[0].user_data)) == 0
     )

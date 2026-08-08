@@ -33,6 +33,7 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kuberne
 | `site-node-labels` | 수동 join 노드까지 필수 라벨과 providerID 계약 검증 |
 | `aws-cli` | Golden AMI에 버전 고정 AWS CLI v2 설치 |
 | `karpenter-bootstrap` | 신규 EC2의 Tailscale 가입 후 kubeadm join 실행기 설치 |
+| `karpenter-token-rotator` | Control Plane에서 Karpenter Worker용 kubeadm token 주기적 갱신 |
 | `karpenter-image` | AMI 캡처 전 kubeadm·Tailscale·machine-id·SSH host key 정리 |
 
 클러스터 이름은 `cntlp-k8s`이고 Kubernetes API와 각 노드의
@@ -122,6 +123,20 @@ Golden Image는 일반 클러스터 구성과 분리한다. Packer가 임시 EC2
 빌드와 비용·삭제 경계는
 [`packer/aws/kubernetes-worker/README.md`](../packer/aws/kubernetes-worker/README.md)를
 따른다.
+
+Karpenter Worker 자동 가입을 운영할 때는 Terraform으로 두 bootstrap Secret과
+최소 IAM Policy를 먼저 적용한 뒤 Control Plane 회전 타이머를 구성한다.
+
+```bash
+ANSIBLE_CONFIG="$PWD/ansible.cfg" \
+  ansible-playbook -i inventories/aws/aws_ec2.yaml \
+  playbooks/site-karpenter-bootstrap-automation.yaml
+```
+
+이 플레이북은 Tailscale OAuth Client Secret을 다루지 않는다. OAuth 값은
+Terraform의 `prepare-bootstrap-secret.sh`가 숨김 입력으로 Secrets Manager에
+직접 등록한다. kubeadm token은 Control Plane에서 TTL 24시간으로 생성되며
+systemd timer가 12시간마다 갱신한다.
 
 ## 단계별 실행
 

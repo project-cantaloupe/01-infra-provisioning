@@ -14,7 +14,8 @@ fail() {
 }
 
 aws_region=""
-secret_id=""
+tailscale_oauth_secret_id=""
+kubeadm_join_secret_id=""
 node_name=""
 karpenter_node=false
 
@@ -24,8 +25,12 @@ while [[ $# -gt 0 ]]; do
       aws_region="${2:-}"
       shift 2
       ;;
-    --secret-id)
-      secret_id="${2:-}"
+    --tailscale-oauth-secret-id)
+      tailscale_oauth_secret_id="${2:-}"
+      shift 2
+      ;;
+    --kubeadm-join-secret-id)
+      kubeadm_join_secret_id="${2:-}"
       shift 2
       ;;
     --node-name)
@@ -44,7 +49,8 @@ done
 
 [[ "${EUID}" -eq 0 ]] || fail "root 권한으로 실행해야 합니다."
 [[ -n "${aws_region}" ]] || fail "--aws-region이 필요합니다."
-[[ -n "${secret_id}" ]] || fail "--secret-id가 필요합니다."
+[[ -n "${tailscale_oauth_secret_id}" ]] || fail "--tailscale-oauth-secret-id가 필요합니다."
+[[ -n "${kubeadm_join_secret_id}" ]] || fail "--kubeadm-join-secret-id가 필요합니다."
 [[ "${node_name}" =~ ^cntlp-aws-wk-[0-9]{2}$ ]] || fail "Boot Test Node 이름 규칙에 맞지 않습니다."
 
 if [[ -s /etc/kubernetes/kubelet.conf ]]; then
@@ -53,8 +59,9 @@ if [[ -s /etc/kubernetes/kubelet.conf ]]; then
 fi
 
 work_directory="$(mktemp -d /run/cntlp-worker-bootstrap.XXXXXX)"
-secret_file="${work_directory}/bootstrap-secret.json"
-tailscale_auth_key_file="${work_directory}/tailscale-auth-key"
+tailscale_oauth_secret_file="${work_directory}/tailscale-oauth-secret.json"
+tailscale_client_secret_file="${work_directory}/tailscale-client-secret"
+kubeadm_join_secret_file="${work_directory}/kubeadm-join-secret.json"
 tailscale_status_file="${work_directory}/tailscale-status.json"
 instance_identity_file="${work_directory}/instance-identity.json"
 join_config_file="${work_directory}/kubeadm-join.yaml"
@@ -64,23 +71,55 @@ cleanup() {
 }
 trap cleanup EXIT
 
-log "Bootstrap Secret 조회"
-for attempt in $(seq 1 12); do
-  if aws secretsmanager get-secret-value \
-    --region "${aws_region}" \
-    --secret-id "${secret_id}" \
-    --query SecretString \
-    --output text >"${secret_file}"; then
-    break
-  fi
+read_secret() {
+  local secret_id="$1"
+  local output_file="$2"
+  local label="$3"
 
-  if [[ "${attempt}" -eq 12 ]]; then
-    fail "Bootstrap Secret을 조회하지 못했습니다."
-  fi
-  sleep 5
-done
+  log "${label} Secret 조회"
+  for attempt in $(seq 1 12); do
+    if aws secretsmanager get-secret-value \
+      --region "${aws_region}" \
+      --secret-id "${secret_id}" \
+      --query SecretString \
+      --output text >"${output_file}"; then
+      return 0
+    fi
 
-python3 - "${secret_file}" "${tailscale_auth_key_file}" <<'PY'
+    if [[ "${attempt}" -eq 12 ]]; then
+      fail "${label} Secret을 조회하지 못했습니다."
+    fi
+    sleep 5
+  done
+}
+
+read_secret \
+  "${tailscale_oauth_secret_id}" \
+  "${tailscale_oauth_secret_file}" \
+  "Tailscale OAuth"
+read_secret \
+  "${kubeadm_join_secret_id}" \
+  "${kubeadm_join_secret_file}" \
+  "kubeadm Join"
+
+python3 - "${tailscale_oauth_secret_file}" "${tailscale_client_secret_file}" <<'PY'
+import json
+import pathlib
+import sys
+
+secret_path = pathlib.Path(sys.argv[1])
+client_secret_path = pathlib.Path(sys.argv[2])
+secret = json.loads(secret_path.read_text(encoding="utf-8"))
+
+client_secret = str(secret.get("oauth_client_secret", ""))
+if not client_secret.startswith("tskey-client-"):
+    raise SystemExit("invalid Tailscale OAuth client secret")
+
+client_secret_path.write_text(client_secret, encoding="utf-8")
+client_secret_path.chmod(0o600)
+PY
+
+python3 - "${kubeadm_join_secret_file}" <<'PY'
 import datetime
 import json
 import pathlib
@@ -88,11 +127,9 @@ import re
 import sys
 
 secret_path = pathlib.Path(sys.argv[1])
-auth_key_path = pathlib.Path(sys.argv[2])
 secret = json.loads(secret_path.read_text(encoding="utf-8"))
 
 required = {
-    "tailscale_auth_key",
     "api_server_endpoint",
     "token",
     "ca_cert_hash",
@@ -100,10 +137,8 @@ required = {
 }
 missing = sorted(required - secret.keys())
 if missing:
-    raise SystemExit(f"bootstrap secret missing fields: {', '.join(missing)}")
+    raise SystemExit(f"kubeadm join secret missing fields: {', '.join(missing)}")
 
-if not str(secret["tailscale_auth_key"]).startswith("tskey-auth-"):
-    raise SystemExit("invalid Tailscale auth key")
 if not re.fullmatch(r"[a-z0-9]{6}\.[a-z0-9]{16}", str(secret["token"])):
     raise SystemExit("invalid kubeadm bootstrap token")
 if not re.fullmatch(r"sha256:[a-f0-9]{64}", str(secret["ca_cert_hash"])):
@@ -116,15 +151,12 @@ expires_at = datetime.datetime.fromisoformat(
 )
 if expires_at <= datetime.datetime.now(datetime.timezone.utc):
     raise SystemExit("kubeadm bootstrap token expired")
-
-auth_key_path.write_text(str(secret["tailscale_auth_key"]), encoding="utf-8")
-auth_key_path.chmod(0o600)
 PY
 
 log "Tailscale 가입"
 systemctl enable --now tailscaled
 tailscale up \
-  --auth-key="file:${tailscale_auth_key_file}" \
+  --client-secret="file:${tailscale_client_secret_file}" \
   --hostname="${node_name}" \
   --advertise-tags=tag:cntlp-wk \
   --accept-dns=false \
@@ -132,7 +164,7 @@ tailscale up \
   --ssh \
   --timeout=2m \
   --reset
-rm -f -- "${tailscale_auth_key_file}"
+rm -f -- "${tailscale_oauth_secret_file}" "${tailscale_client_secret_file}"
 
 for attempt in $(seq 1 24); do
   if tailscale status --json >"${tailscale_status_file}"; then
@@ -188,7 +220,7 @@ curl --fail --silent --show-error --retry 5 \
   >"${instance_identity_file}"
 
 python3 - \
-  "${secret_file}" \
+  "${kubeadm_join_secret_file}" \
   "${instance_identity_file}" \
   "${join_config_file}" \
   "${node_name}" \
@@ -198,7 +230,7 @@ import json
 import pathlib
 import sys
 
-secret = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+join_secret = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 identity = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
 output_path = pathlib.Path(sys.argv[3])
 node_name = sys.argv[4]
@@ -236,10 +268,10 @@ config = f"""apiVersion: kubeadm.k8s.io/v1beta4
 kind: JoinConfiguration
 discovery:
   bootstrapToken:
-    apiServerEndpoint: "{secret['api_server_endpoint']}"
-    token: "{secret['token']}"
+    apiServerEndpoint: "{join_secret['api_server_endpoint']}"
+    token: "{join_secret['token']}"
     caCertHashes:
-      - "{secret['ca_cert_hash']}"
+      - "{join_secret['ca_cert_hash']}"
 nodeRegistration:
   name: "{node_name}"
   criSocket: unix:///var/run/containerd/containerd.sock
@@ -257,7 +289,7 @@ output_path.write_text(config, encoding="utf-8")
 output_path.chmod(0o600)
 PY
 
-rm -f -- "${secret_file}"
+rm -f -- "${kubeadm_join_secret_file}"
 
 log "Kubernetes 가입"
 kubeadm config validate --config "${join_config_file}"

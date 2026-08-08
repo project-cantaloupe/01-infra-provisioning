@@ -39,12 +39,13 @@ resource "aws_instance" "boot_test" {
   associate_public_ip_address = false
 
   # Secret 값은 user_data와 Terraform state에 넣지 않는다. 자동 가입을 켠 경우에도
-  # Secret ARN만 전달하고, 실제 단기 자격증명은 Instance Profile로 런타임에 조회한다.
+  # Secret ARN만 전달하고, 실제 자격증명은 Instance Profile로 런타임에 조회한다.
   user_data = templatefile("${path.module}/templates/boot-test-user-data.sh.tftpl", {
-    aws_region        = var.aws_region
-    bootstrap_enabled = var.boot_test_join_cluster
-    node_name         = local.boot_test_node_name
-    secret_id         = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.worker_bootstrap[0].arn : ""
+    aws_region                = var.aws_region
+    bootstrap_enabled         = var.boot_test_join_cluster
+    node_name                 = local.boot_test_node_name
+    tailscale_oauth_secret_id = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.tailscale_oauth[0].arn : ""
+    kubeadm_join_secret_id    = var.enable_bootstrap_foundation ? aws_secretsmanager_secret.kubeadm_join[0].arn : ""
   })
 
   user_data_replace_on_change = true
@@ -79,7 +80,7 @@ resource "aws_instance" "boot_test" {
 
   depends_on = [
     aws_iam_role_policy.packer_ssm,
-    aws_iam_role_policy.worker_bootstrap_secret,
+    aws_iam_role_policy.worker_bootstrap_secrets,
     aws_vpc_security_group_egress_rule.packer,
   ]
 }

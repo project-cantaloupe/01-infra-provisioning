@@ -1,0 +1,8 @@
+---
+karpenter_token_rotator_aws_region: ap-northeast-2
+karpenter_token_rotator_secret_id: cntlp-aws-cicd-kubeadm-bootstrap
+karpenter_token_rotator_token_ttl: 24h
+karpenter_token_rotator_secret_valid_seconds: 82800
+karpenter_token_rotator_on_boot_delay: 5m
+karpenter_token_rotator_interval: 12h
+karpenter_token_rotator_randomized_delay: 5m

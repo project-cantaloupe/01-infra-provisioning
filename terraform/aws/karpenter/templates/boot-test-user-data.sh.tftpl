@@ -12,6 +12,7 @@ CFG
 %{ if bootstrap_enabled ~}
 /usr/local/sbin/cntlp-worker-bootstrap \
   --aws-region '${aws_region}' \
-  --secret-id '${secret_id}' \
+  --tailscale-oauth-secret-id '${tailscale_oauth_secret_id}' \
+  --kubeadm-join-secret-id '${kubeadm_join_secret_id}' \
   --node-name '${node_name}'
 %{ endif ~}

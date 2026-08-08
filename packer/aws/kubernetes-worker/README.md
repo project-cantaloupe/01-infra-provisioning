@@ -15,7 +15,7 @@ Karpenter가 생성할 Worker의 공통 OS와 패키지를 AMI에 미리 설치�
 
 ## 포함하지 않는 항목
 
-- Tailscale auth key와 machine key
+- Tailscale OAuth Client Secret과 machine key
 - kubeadm join token과 kubelet 인증서
 - CNI 상태와 Kubernetes Node 이름
 - 애플리케이션 이미지와 AWS 자격증명

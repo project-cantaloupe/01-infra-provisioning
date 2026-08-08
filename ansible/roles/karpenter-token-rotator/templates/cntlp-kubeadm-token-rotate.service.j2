@@ -1,0 +1,11 @@
+[Unit]
+Description=Cantaloupe Karpenter kubeadm token rotation
+After=network-online.target kubelet.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/cntlp-kubeadm-token-rotate --aws-region {{ karpenter_token_rotator_aws_region }} --secret-id {{ karpenter_token_rotator_secret_id }} --token-ttl {{ karpenter_token_rotator_token_ttl }} --secret-valid-seconds {{ karpenter_token_rotator_secret_valid_seconds }}
+NoNewPrivileges=true
+PrivateTmp=true
