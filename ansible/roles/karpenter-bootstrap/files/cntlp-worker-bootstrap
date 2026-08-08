@@ -102,7 +102,7 @@ missing = sorted(required - secret.keys())
 if missing:
     raise SystemExit(f"bootstrap secret missing fields: {', '.join(missing)}")
 
-if not str(secret["tailscale_auth_key"]).startswith("tskey-"):
+if not str(secret["tailscale_auth_key"]).startswith("tskey-auth-"):
     raise SystemExit("invalid Tailscale auth key")
 if not re.fullmatch(r"[a-z0-9]{6}\.[a-z0-9]{16}", str(secret["token"])):
     raise SystemExit("invalid kubeadm bootstrap token")

@@ -111,7 +111,7 @@ else
   unset tailscale_auth_key
 fi
 
-if ! grep -Eq '^tskey-' "${auth_key_file}"; then
+if ! grep -Eq '^tskey-auth-' "${auth_key_file}"; then
   printf 'Tailscale auth key 형식이 올바르지 않습니다.\n' >&2
   exit 1
 fi
@@ -156,7 +156,7 @@ try:
 except (ValueError, IndexError) as error:
     raise SystemExit("kubeadm join command parse failed") from error
 
-if not auth_key.startswith("tskey-"):
+if not auth_key.startswith("tskey-auth-"):
     raise SystemExit("invalid Tailscale auth key")
 if not re.fullmatch(r"[^\s:]+:\d{1,5}", endpoint):
     raise SystemExit("invalid Kubernetes API endpoint")
