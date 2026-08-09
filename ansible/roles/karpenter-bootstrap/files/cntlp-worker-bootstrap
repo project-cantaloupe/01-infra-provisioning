@@ -58,6 +58,13 @@ if [[ -s /etc/kubernetes/kubelet.conf ]]; then
   exit 0
 fi
 
+# Golden AMI의 AWS 기본 hostname을 예약된 Kubernetes Node 이름으로 바꾼다.
+# cloud-init 재실행이나 재부팅 후에도 같은 이름을 유지한다.
+hostnamectl set-hostname "${node_name}"
+cat >/etc/cloud/cloud.cfg.d/99-preserve-hostname.cfg <<'CFG'
+preserve_hostname: true
+CFG
+
 work_directory="$(mktemp -d /run/cntlp-worker-bootstrap.XXXXXX)"
 tailscale_oauth_secret_file="${work_directory}/tailscale-oauth-secret.json"
 tailscale_client_secret_file="${work_directory}/tailscale-client-secret"
@@ -205,7 +212,15 @@ PY
 tailscale_ipv4="${tailscale_identity[0]:-}"
 tailscale_registered_name="${tailscale_identity[1]:-}"
 [[ "${tailscale_ipv4}" =~ ^100\. ]] || fail "Tailscale IPv4를 확인하지 못했습니다."
-[[ "${tailscale_registered_name}" == "${node_name}" ]] || fail "Tailscale 등록 이름이 바뀌었습니다."
+if [[ "${tailscale_registered_name}" != "${node_name}" ]]; then
+  # Karpenter는 같은 예약 이름을 반복 사용한다. 이전 ephemeral Device가 아직
+  # tailnet에 남아 있으면 Tailscale이 -1, -2 접미사를 자동으로 붙인다.
+  if [[ "${karpenter_node}" != true ]] \
+    || [[ ! "${tailscale_registered_name}" =~ ^${node_name}-[0-9]+$ ]]; then
+    fail "Tailscale 등록 이름이 허용 범위를 벗어났습니다."
+  fi
+  log "Tailscale 중복 이름 접미사 허용: ${tailscale_registered_name}"
+fi
 
 log "EC2 신원 확인"
 imds_token="$({

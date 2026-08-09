@@ -61,7 +61,10 @@ Instance Profile, Private Subnet, Worker Security Group과 정확한 Golden AMI�
 
 초기 E2E는 `cntlp-aws-wk-99` 한 대만 허용한다. 이 고정 이름은 Karpenter가
 EC2를 생성·가입·삭제하는 경로를 검증하기 위한 예약 이름이며 다중 NodePool
-운영 계약이 아니다. 현재 NodePool의 최대 Node 수도 1로 제한한다.
+운영 계약이 아니다. 현재 NodePool의 최대 Node 수도 1로 제한한다. Karpenter가
+같은 이름으로 다시 가입할 때 이전 ephemeral Device가 tailnet에 남아 있으면
+Tailscale DNS 이름에는 `-1`, `-2` 접미사가 붙을 수 있다. Kubernetes Node 이름은
+예약 이름을 유지하고 해당 Tailscale 접미사만 bootstrap에서 허용한다.
 
 ## Golden AMI Boot Test
 
