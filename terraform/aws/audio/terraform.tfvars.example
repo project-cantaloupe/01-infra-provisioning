@@ -33,6 +33,9 @@ cluster_oidc_issuer_url       = null
 # 빠뜨리면 기본값 false로 떨어져 이미 만들어진 정책을 destroy하는 plan이 나온다.
 enable_node_role_policy = true
 
+# KEDA를 설치할 때만 Control Plane Role에 transcode Queue 조회 권한을 붙인다.
+enable_keda_controller_policy = false
+
 audio_namespace                 = "apps"
 audio_api_service_account       = "audio-api"
 audio_events_service_account    = "audio-events"
