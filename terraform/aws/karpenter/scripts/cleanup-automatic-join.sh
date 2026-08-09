@@ -13,12 +13,25 @@ node_name="${CNTLP_BOOT_TEST_NODE_NAME:-cntlp-aws-wk-99}"
   exit 1
 }
 
-for command_name in tailscale; do
+for command_name in tailscale ssh; do
   command -v "${command_name}" >/dev/null || {
     printf '필수 명령을 찾지 못했습니다: %s\n' "${command_name}" >&2
     exit 1
   }
 done
+
+work_directory="$(mktemp -d "${TMPDIR:-/tmp}/cntlp-automatic-join-cleanup.XXXXXX")"
+trap 'rm -rf -- "${work_directory}"' EXIT
+
+node_ip="$(
+  tailscale ssh "ubuntu@${control_plane_host}" \
+    "kubectl get node '${node_name}' -o jsonpath='{.status.addresses[?(@.type==\"InternalIP\")].address}'" \
+    2>/dev/null || true
+)"
+if [[ -n "${node_ip}" && ! "${node_ip}" =~ ^100\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+  printf 'Boot Test Node의 Tailscale InternalIP 형식이 올바르지 않습니다.\n' >&2
+  node_ip=""
+fi
 
 printf 'Boot Test Node drain\n'
 if tailscale ssh "ubuntu@${control_plane_host}" \
@@ -28,7 +41,17 @@ if tailscale ssh "ubuntu@${control_plane_host}" \
 fi
 
 printf 'Boot Test Tailscale logout\n'
-tailscale ssh "ubuntu@${node_name}" "sudo tailscale logout" || true
+if [[ -n "${node_ip}" ]]; then
+  ssh \
+    -o BatchMode=yes \
+    -o ConnectTimeout=15 \
+    -o StrictHostKeyChecking=accept-new \
+    -o UserKnownHostsFile="${work_directory}/known_hosts" \
+    "ubuntu@${node_ip}" \
+    "sudo tailscale logout" || true
+else
+  printf 'Boot Test Node InternalIP를 찾지 못해 Tailscale logout을 건너뜁니다.\n' >&2
+fi
 
 printf 'Boot Test Node 객체 삭제\n'
 tailscale ssh "ubuntu@${control_plane_host}" \

@@ -21,6 +21,10 @@ command -v python3 >/dev/null || {
   printf 'python3가 필요합니다.\n' >&2
   exit 1
 }
+command -v ssh >/dev/null || {
+  printf 'ssh CLI가 필요합니다.\n' >&2
+  exit 1
+}
 
 work_directory="$(mktemp -d "${TMPDIR:-/tmp}/cntlp-automatic-join.XXXXXX")"
 node_file="${work_directory}/node.json"
@@ -138,5 +142,33 @@ fi
 
 cat "${verification_file}"
 
-tailscale ssh "ubuntu@${node_name}" \
+node_ip="$(python3 - "${node_file}" <<'PY'
+import json
+import pathlib
+import sys
+
+node = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(
+    next(
+        address["address"]
+        for address in node["status"].get("addresses", [])
+        if address.get("type") == "InternalIP"
+    )
+)
+PY
+)"
+[[ "${node_ip}" =~ ^100\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || {
+  printf 'AUTOMATIC_JOIN_FAILED node=%s checks=tailscale-internal-ip\n' "${node_name}" >&2
+  exit 1
+}
+
+# 동일한 MagicDNS 이름을 반복 가입한 검증에서 tailscale ssh wrapper가 대기한 사례가
+# 있었다. Kubernetes가 확인한 현재 Tailscale InternalIP로 직접 접속하고 테스트 전용
+# known_hosts는 임시 디렉터리와 함께 제거한다.
+ssh \
+  -o BatchMode=yes \
+  -o ConnectTimeout=15 \
+  -o StrictHostKeyChecking=accept-new \
+  -o UserKnownHostsFile="${work_directory}/known_hosts" \
+  "ubuntu@${node_ip}" \
   "sudo test -s /var/lib/cntlp/bootstrap-complete && sudo cat /var/lib/cntlp/bootstrap-complete"
