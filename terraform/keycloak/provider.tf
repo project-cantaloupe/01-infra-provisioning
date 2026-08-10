@@ -27,3 +27,16 @@
 # 이미 로그인을 시도하므로, Keycloak 이 안 떠 있으면 plan 부터 실패한다.
 # 에러가 "리소스가 없다"가 아니라 연결 실패로 나와서 원인이 헷갈린다.
 provider "keycloak" {}
+
+# AWS. 자격증명은 환경변수·프로파일에서 온다 — 다른 스택과 같다.
+provider "aws" {
+  region = var.aws_region
+
+  default_tags {
+    tags = {
+      Project   = "cantaloupe"
+      ManagedBy = "terraform"
+      Stack     = "keycloak"
+    }
+  }
+}

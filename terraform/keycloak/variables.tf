@@ -37,3 +37,21 @@ variable "platform_admin_last_name" {
   description = "전권 계정의 성"
   type        = string
 }
+
+# ── AWS 쪽 ─────────────────────────────────────────────────────
+
+variable "aws_region" {
+  description = "Secrets Manager 리전. tfstate·다른 스택과 같은 곳이어야 한다"
+  type        = string
+  default     = "ap-northeast-2"
+}
+
+variable "worker_node_role_name" {
+  description = <<-EOT
+    ESO 컨트롤러가 IMDS 로 집는 워커 노드 IAM 역할 이름.
+    **역할을 이름으로 참조하는 이유는 terraform/aws/compute 를 apply 하지
+    않기 위해서다** — 그 스택은 EC2 인스턴스를 소유한다 (secrets.tf 참고).
+  EOT
+  type        = string
+  default     = "cntlp-aws-worker-node"
+}

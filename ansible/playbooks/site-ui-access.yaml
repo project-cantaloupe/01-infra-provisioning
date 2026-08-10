@@ -1,0 +1,32 @@
+---
+# tailnet 안쪽 UI 를 MagicDNS HTTPS 로 내보낸다.
+#
+# **한때 Argo CD 전용이었다** (`site-argocd-access.yaml`). UI 가 늘면서
+# 노드도 둘이 됐고, 무엇보다 **OIDC 가 안정된 https 주소를 요구**하면서
+# 이 플레이북이 SSO 의 선행 단계가 됐다 → tasks/doing/014_oidc-client-rollout.md
+#
+# 대상은 `tailscale_serve_enabled: true` 인 호스트뿐이다. 롤 자신이
+# 그 값으로 자기를 막으므로 `hosts: all` 이어도 나머지는 건너뛴다.
+#
+#   cntlp-onp-wk-01   /  → Harbor,  /argocd → Argo CD
+#   cntlp-gcp-wk-01   /grafana → Grafana
+#
+# **어느 노드에 거는지는 파드 배치가 정한다.** Service 가
+# `externalTrafficPolicy: Local` 이면 그 파드가 있는 노드에서만 NodePort 가
+# 응답한다 — 다른 노드에서 프록시하면 거부가 아니라 무응답이라 원인이
+# 안 보인다. 각 host_vars 의 주석에 그 판단 근거가 있다.
+#
+# ⚠️ **롤이 경로 맵 전체를 소유한다.** host_vars 에 없는 경로는 수렴 때
+# 사라진다. 손으로 붙인 경로가 있으면 먼저 host_vars 에 적는다.
+#
+# 실행:
+#   ansible-playbook -i inventories/onp/proxmox.yaml \
+#                    -i inventories/gcp/gcp_compute.yaml \
+#                    playbooks/site-ui-access.yaml
+- name: tailnet UI 접속 구성
+  hosts: all
+  become: true
+  gather_facts: false
+  roles:
+    - role: tailscale-serve
+      tags: [ui, tailscale-serve]

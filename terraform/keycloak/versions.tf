@@ -17,5 +17,13 @@ terraform {
       # provider 버전은 Keycloak 서버 버전과 무관하다 — 서버는 26.7.1 이다.
       version = "~> 5.0"
     }
+
+    # Grafana 부터 confidential 클라이언트가 생겨 시크릿을 클러스터로
+    # 배달해야 한다. 그 경로가 Secrets Manager 라 AWS provider 가 필요하다
+    # → secrets.tf
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
   }
 }

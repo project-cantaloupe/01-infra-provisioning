@@ -1,8 +1,32 @@
 ---
-# Argo CD UI를 제공하는 On-Prem 노드 설정.
+# 온프렘 워커 겸 UI 프론트. MagicDNS HTTPS 하나 뒤에 여러 UI 를 건다.
 tailscale_hostname: cntlp-onp-wk-01
 tailscale_tags: "tag:cntlp-wk,tag:cntlp-ui"
 
-# MagicDNS HTTPS를 Argo CD NodePort로 전달한다.
 tailscale_serve_enabled: true
 tailscale_serve_expected_dns_name: cntlp-onp-wk-01.tail270b85.ts.net
+
+# **이 맵이 실물의 진실이다** (2026-08-11 `tailscale serve status` 로 대조).
+# 롤이 맵 전체를 소유하므로 여기 없는 경로는 사라진다.
+#
+# 이 노드에 거는 기준은 **파드가 여기 있느냐**다. 둘 다 Service 가
+# `externalTrafficPolicy: Local` 이거나(argocd-server) 이 노드에 파드가
+# 있어서(harbor-v2-nginx) 127.0.0.1 프록시가 성립한다.
+#
+#   argocd-server   Local     파드도 이 노드      → 여기 아니면 안 된다
+#   harbor-v2       Cluster   파드도 이 노드      → 여기가 자연스럽다
+#
+# Grafana 를 여기 못 거는 이유가 정확히 이 열이다 — Service 가 Local 인데
+# 파드는 cntlp-gcp-wk-01 에 있다. 그래서 그 노드에서 연다.
+tailscale_serve_routes:
+  # Harbor. 레지스트리 UI 이자 docker login 대상이라 루트를 준다.
+  # 서브패스로 내리면 이미지 참조 이름(`<host>/<project>/<image>`)이 바뀐다.
+  - path: /
+    backend: http://127.0.0.1:32432
+    check: http://127.0.0.1:32432/
+
+  # Argo CD. `argocd-cm` 의 `url:` 이 같은 경로를 알고 있어야 한다
+  # (02-k8s-manifests platform/onp/argocd/kustomization.yaml).
+  - path: /argocd
+    backend: http://127.0.0.1:31430/argocd/
+    check: http://127.0.0.1:31430/argocd/

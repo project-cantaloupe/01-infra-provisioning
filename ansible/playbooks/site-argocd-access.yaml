@@ -1,9 +1,0 @@
----
-# Argo CD 배포 후 MagicDNS HTTPS 접속을 구성한다.
-- name: Argo CD Tailscale 접속 구성
-  hosts: cntlp-onp-wk-01
-  become: true
-  gather_facts: false
-  roles:
-    - role: tailscale-serve
-      tags: [argocd, tailscale-serve]
