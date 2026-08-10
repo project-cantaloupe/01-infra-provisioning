@@ -26,6 +26,13 @@ apiServer:
   certSANs:
     - "{{ tailscale_ipv4 }}"
     - "{{ ansible_facts.hostname }}"
+  # v1beta4 의 extraArgs 는 맵이 아니라 name/value 목록이다. v1beta3 문법
+  # (`service-node-port-range: "..."`)을 쓰면 kubeadm 이 파싱 단계에서 죽는다.
+  #
+  # 443 을 포함시키는 이유는 vars/cluster.yml 의 같은 이름 변수 옆에 있다.
+  extraArgs:
+    - name: service-node-port-range
+      value: "{{ kubernetes_service_node_port_range }}"
 networking:
   dnsDomain: "{{ kubernetes_dns_domain }}"
   serviceSubnet: "{{ kubernetes_service_cidr }}"
