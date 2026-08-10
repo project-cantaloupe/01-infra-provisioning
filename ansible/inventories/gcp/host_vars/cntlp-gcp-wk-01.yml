@@ -1,0 +1,27 @@
+---
+# Grafana 를 MagicDNS HTTPS 로 내보내는 노드.
+#
+# **왜 여기냐** — `monitoring/grafana` Service 가
+# `externalTrafficPolicy: Local` 이고 grafana 파드가 이 노드에 있다
+# (nodeSelector `platform: gcp`, `role: monitoring`).
+# Local 은 그 노드에 엔드포인트가 없으면 NodePort 로 들어온 트래픽을
+# **버린다** — 거부가 아니라 무응답이라 원인을 찾기 어렵다.
+# 그래서 UI 프론트인 cntlp-onp-wk-01 에 얹을 수 없다.
+#
+# `kube-prometheus-stack/values.yaml` 의 `root_url` 이 이미 이 호스트를
+# 가리키고 있었다. 설정만 있고 serve 가 없어 실제로는 안 닿던 상태였다.
+tailscale_serve_enabled: true
+tailscale_serve_expected_dns_name: cntlp-gcp-wk-01.tail270b85.ts.net
+
+# ⚠️ `tailscale_tags` 를 여기서 덮지 않는다. platform_gcp.yml 의
+# `tag:cntlp-wk` 를 그대로 쓴다. cntlp-onp-wk-01 이 같은 태그 하나로
+# serve 를 돌리고 있어(2026-08-11 tailnet 실측) 태그를 더할 이유가 없고,
+# 태그 변경은 auth key 재조인을 요구해 되돌리기가 비싸다.
+
+tailscale_serve_routes:
+  # Grafana. `grafana.ini` 의 `root_url` + `serve_from_sub_path: true` 가
+  # 같은 경로를 알고 있어야 한다 — 백엔드 URL 끝의 `/grafana/` 와 짝이다.
+  # 한쪽만 바꾸면 로그인 뒤 리다이렉트가 깨진다.
+  - path: /grafana
+    backend: http://127.0.0.1:30300/grafana/
+    check: http://127.0.0.1:30300/grafana/login

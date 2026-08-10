@@ -1,7 +1,15 @@
 ---
-- name: Argo CD Tailscale Serve 구성
+- name: Tailscale Serve 경로 맵 수렴
   when: tailscale_serve_enabled | bool
   block:
+    - name: 경로 맵이 비어 있지 않은지 확인
+      ansible.builtin.assert:
+        that:
+          - tailscale_serve_routes | length > 0
+        fail_msg: >-
+          tailscale_serve_enabled 가 true 인데 tailscale_serve_routes 가 비었다.
+          그대로 두면 수렴이 현재 설정을 통째로 지운다.
+
     - name: Tailscale 가입 상태 조회
       ansible.builtin.command: tailscale status --json
       register: tailscale_serve_tailnet_status
@@ -20,6 +28,8 @@
           {{ (tailscale_serve_tailnet_status.stdout | from_json).Self.DNSName
              | default('') | regex_replace('[.]$', '') }}
 
+    # 이름이 어긋나면 인증서도 리다이렉트 URI 도 전부 어긋난다. Tailscale 이
+    # 같은 이름의 디바이스에 `-1` 을 붙이는 경우가 실제로 있다.
     - name: MagicDNS 이름 확인
       ansible.builtin.assert:
         that:
@@ -30,58 +40,126 @@
           MagicDNS 이름이 다릅니다. 현재={{ tailscale_serve_dns_name }},
           기대={{ tailscale_serve_expected_dns_name }}
 
-    - name: Argo CD NodePort 응답 대기
+    # 죽은 백엔드를 걸어두면 tailscale 은 성공하고 사용자만 502 를 본다.
+    - name: 백엔드가 응답하는지 확인
       ansible.builtin.uri:
-        url: "{{ tailscale_serve_backend_check_url }}"
+        url: "{{ item.check | default(item.backend) }}"
         method: HEAD
         follow_redirects: none
         status_code: "{{ tailscale_serve_allowed_status_codes }}"
         validate_certs: "{{ tailscale_serve_backend_validate_certs }}"
         use_proxy: false
         timeout: 5
+      loop: "{{ tailscale_serve_routes }}"
+      loop_control:
+        label: "{{ item.path }} -> {{ item.backend }}"
       register: tailscale_serve_backend_check
-      retries: 12
-      delay: 5
-      until: tailscale_serve_backend_check.status | default(-1) in tailscale_serve_allowed_status_codes
+      retries: "{{ tailscale_serve_backend_retries }}"
+      delay: "{{ tailscale_serve_backend_delay }}"
+      until: tailscale_serve_backend_check.status | default(-1)
+             in tailscale_serve_allowed_status_codes
       check_mode: false
 
-    - name: 현재 Tailscale Serve 설정 조회
+    - name: 현재 Serve 설정 조회
       ansible.builtin.command: tailscale serve status --json
       register: tailscale_serve_status_before
       changed_when: false
       failed_when: false
       check_mode: false
 
-    - name: Argo CD HTTPS 프록시 구성
+    # 현재와 기대를 경로 -> 백엔드 맵으로 각각 만들어 통째로 비교한다.
+    # 부분 비교를 하면 "있는 것만 맞는지" 를 보게 되어, 손으로 붙인 여분
+    # 경로를 못 잡는다.
+    - name: 현재 핸들러 추출
+      ansible.builtin.set_fact:
+        tailscale_serve_handlers: >-
+          {{ (tailscale_serve_status_before.stdout | default('{}', true) | from_json)
+             .get('Web', {})
+             .get(tailscale_serve_dns_name ~ ':' ~ (tailscale_serve_https_port | string), {})
+             .get('Handlers', {}) }}
+
+    - name: 현재·기대 경로 맵 계산
+      ansible.builtin.set_fact:
+        tailscale_serve_current: >-
+          {{ dict(tailscale_serve_handlers.keys()
+                  | zip(tailscale_serve_handlers.values()
+                        | map(attribute='Proxy') | list)) }}
+        tailscale_serve_desired: >-
+          {{ dict(tailscale_serve_routes | map(attribute='path') | list
+                  | zip(tailscale_serve_routes | map(attribute='backend') | list)) }}
+
+    - name: 수렴이 필요한지 판정
+      ansible.builtin.set_fact:
+        tailscale_serve_needs_apply: >-
+          {{ tailscale_serve_current != tailscale_serve_desired }}
+
+    - name: 현재·기대 차이 출력
+      ansible.builtin.debug:
+        msg:
+          - "현재: {{ tailscale_serve_current }}"
+          - "기대: {{ tailscale_serve_desired }}"
+          - "적용 필요: {{ tailscale_serve_needs_apply }}"
+
+    # ── 다르면 통째로 다시 만든다 ──────────────────────────────
+    #
+    # 경로 하나만 지우는 `--set-path=... off` 는 이 버전(1.98)의 help 에
+    # 없어서 쓰지 않는다. 문서화되지 않은 문법을 살아 있는 경로에 시험하면
+    # 실패 모드를 모른 채 UI 를 잃는다.
+    #
+    # reset 은 문서화된 서브커맨드다. 재적용까지 1초 미만이고, **다를 때만**
+    # 돈다 — 매 실행마다 끊기지 않는다.
+    - name: Serve 설정 초기화
+      ansible.builtin.command: tailscale serve reset
+      when:
+        - tailscale_serve_needs_apply | bool
+        - not ansible_check_mode
+      changed_when: true
+
+    - name: 경로별 HTTPS 프록시 구성
       ansible.builtin.command:
         argv:
           - tailscale
           - serve
           - --bg
           - "--https={{ tailscale_serve_https_port }}"
-          - "{{ tailscale_serve_backend_url }}"
+          - "--set-path={{ item.path }}"
+          - "{{ item.backend }}"
+      loop: "{{ tailscale_serve_routes }}"
+      loop_control:
+        label: "{{ item.path }} -> {{ item.backend }}"
       when:
+        - tailscale_serve_needs_apply | bool
         - not ansible_check_mode
-        - tailscale_serve_backend_url not in tailscale_serve_status_before.stdout
-          or ('"' ~ (tailscale_serve_https_port | string) ~ '"')
-             not in tailscale_serve_status_before.stdout
       changed_when: true
 
-    - name: 적용된 Tailscale Serve 설정 조회
+    - name: 적용 결과 조회
       ansible.builtin.command: tailscale serve status --json
       register: tailscale_serve_status_after
       changed_when: false
       check_mode: false
 
-    - name: Tailscale Serve 설정 확인
+    # 적용했다는 사실이 아니라 적용된 값을 본다.
+    - name: 경로가 전부 반영됐는지 확인
       ansible.builtin.assert:
         that:
-          - tailscale_serve_backend_url in tailscale_serve_status_after.stdout
-          - ('"' ~ (tailscale_serve_https_port | string) ~ '"')
-            in tailscale_serve_status_after.stdout
-        fail_msg: Tailscale Serve 설정을 확인하세요.
+          - (tailscale_serve_status_after.stdout | from_json)
+            .get('Web', {})
+            .get(tailscale_serve_dns_name ~ ':' ~ tailscale_serve_https_port, {})
+            .get('Handlers', {})
+            .get(item.path, {})
+            .get('Proxy', '') == item.backend
+        fail_msg: >-
+          {{ item.path }} 가 {{ item.backend }} 로 안 걸렸다.
+          현재={{ tailscale_serve_status_after.stdout }}
+      loop: "{{ tailscale_serve_routes }}"
+      loop_control:
+        label: "{{ item.path }}"
       when: not ansible_check_mode
 
-    - name: Argo CD 접속 주소 출력
+    - name: 접속 주소 출력
       ansible.builtin.debug:
-        msg: "https://{{ tailscale_serve_dns_name }}/"
+        msg: >-
+          https://{{ tailscale_serve_dns_name }}{{ item.path }}
+      loop: "{{ tailscale_serve_routes }}"
+      loop_control:
+        label: "{{ item.path }}"

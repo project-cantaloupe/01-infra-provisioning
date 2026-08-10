@@ -103,3 +103,76 @@ resource "keycloak_openid_client_default_scopes" "argocd" {
     keycloak_openid_client_scope.groups.name,
   ]
 }
+
+# ── Grafana — 두 번째 소비자 ───────────────────────────────────
+#
+# ArgoCD 다음으로 고른 이유도 **폴백**이다. 로컬 admin 계정이 남아 있어
+# OIDC 를 잘못 붙여도 잠기지 않는다 → tasks/doing/014_oidc-client-rollout.md
+#
+# ── ⚠️ 여기서부터 confidential 이다 ────────────────────────────
+#
+# ArgoCD 처럼 public 으로 가고 싶었지만 **Grafana 가 허용하지 않는다.**
+# `auth.generic_oauth` 는 `client_id` 와 `client_secret` 을 둘 다 필수로
+# 요구하고, `use_pkce` 를 켜도 면제되지 않는다 (13.1 공식 문서 확인).
+#
+# 이유는 흐름이 다르기 때문이다. ArgoCD 의 PKCE 는 **브라우저가** 토큰
+# 엔드포인트를 직접 부르지만, Grafana 는 **서버가** 인가 코드를 교환한다.
+# 서버는 비밀을 안전하게 보관할 수 있다고 보므로 OAuth 규격상 confidential
+# 이 정상이다. public 으로 만들면 Keycloak 이 시크릿 인증을 거부해
+# `invalid_client` 가 난다.
+#
+# **PKCE 는 그래도 켠다.** 시크릿을 대체하지는 못해도 인가 코드 가로채기는
+# 여전히 막는다. 둘은 배타가 아니다.
+#
+# 시크릿이 어디로 가는지는 secrets.tf 에 있다.
+resource "keycloak_openid_client" "grafana" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "grafana"
+  name      = "Grafana"
+  enabled   = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  # confidential 이어도 켠다. 위 주석 참고.
+  pkce_code_challenge_method = "S256"
+
+  # ⚠️ **경로가 `/grafana/login/generic_oauth` 다.** 두 조각이 붙어 있다.
+  #
+  #   /grafana   tailscale serve 의 경로 + grafana.ini 의 root_url
+  #   /login/generic_oauth   Grafana 가 고정으로 쓰는 콜백 경로
+  #
+  # 서브패스를 쓰면서 앞 조각을 빠뜨리는 것이 가장 흔한 실수다. Keycloak 은
+  # `Invalid parameter: redirect_uri` 를 내는데, 화면에는 그 문구만 뜨고
+  # 어느 쪽이 틀렸는지는 안 알려준다.
+  valid_redirect_uris = [
+    "https://cntlp-gcp-wk-01.tail270b85.ts.net/grafana/login/generic_oauth",
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://cntlp-gcp-wk-01.tail270b85.ts.net/grafana/login",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "grafana" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.grafana.id
+
+  # ArgoCD 와 같은 목록이다. 이 리소스가 목록을 통째로 소유하므로
+  # 내장 스코프를 빠뜨리면 제거된다 — 위 argocd 쪽 주석 참고.
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}
