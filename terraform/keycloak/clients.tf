@@ -289,3 +289,66 @@ resource "keycloak_openid_client_default_scopes" "vault" {
     keycloak_openid_client_scope.groups.name,
   ]
 }
+
+# ── Kubernetes API 서버 — 다섯 번째이자 마지막 소비자 ──────────
+#
+# **이것이 "클러스터 통합 로그인"의 본체다.** 그리고 폴백이 가장 얇다 —
+# 다른 도구는 로컬 계정이 남아 있지만 K8s API 는 잘못되면
+# break-glass kubeconfig 하나뿐이다
+# → references/20260810_k8s-break-glass-kubeconfig.md
+#
+# ── public 으로 돌아온다 ────────────────────────────────────────
+#
+# Grafana·Harbor·Vault 는 confidential 이었지만 여기는 다시 public 이다.
+# **토큰을 교환하는 주체가 사용자 기기의 kubectl 이기 때문**이다. CLI 에
+# 심은 고정 비밀은 사용자에게 그대로 노출되므로 비밀이 아니다.
+#
+# 판별 기준이 매번 같다 — **누가 인가 코드를 교환하는가.**
+#   브라우저·CLI  → public + PKCE
+#   서버          → confidential
+#
+# ⚠️ **API 서버는 이 클라이언트로 토큰을 받지 않는다.** 서버는 발행자의
+# 공개키로 **검증만** 한다. 그래서 서버 쪽에는 시크릿이 필요 없고,
+# 이 클라이언트는 순전히 kubectl 쪽 물건이다.
+resource "keycloak_openid_client" "kubernetes" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "kubernetes"
+  name      = "Kubernetes API"
+  enabled   = true
+
+  access_type = "PUBLIC"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  pkce_code_challenge_method = "S256"
+
+  # kubelogin(`kubectl oidc-login`)이 로컬에 임시 리스너를 띄운다.
+  # 포트가 고정이 아니라 몇 개를 등록해 둔다 — 쓰는 쪽이
+  # `--oidc-redirect-url-hostname` 없이 기본값을 쓰게 하려는 것이다.
+  valid_redirect_uris = [
+    "http://localhost:8000",
+    "http://localhost:8000/",
+    "http://localhost:18000",
+    "http://localhost:18000/",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "kubernetes" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.kubernetes.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}

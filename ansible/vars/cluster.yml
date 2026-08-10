@@ -79,3 +79,19 @@ calico_manifest_directory: /etc/kubernetes/addons/calico
 # (roles/cni-calico/tasks/main.yml 의 「Felix 가 고른 mark 비트를 검사한다」).
 # 정말 모자라면 0x7ff30000 으로 올린다 — 비트 16·17 은 Tailscale 이 안 쓴다.
 calico_iptables_mark_mask: "0x7ff00000"
+
+# ── 사람 인증 (Keycloak OIDC) ──────────────────────────────────
+#
+# API 서버가 이 발행자의 토큰을 검증한다. **서버는 토큰을 받지 않고
+# 검증만 한다** — 그래서 시크릿이 없고, kubectl 쪽 클라이언트는 public 이다
+# → 01-infra-provisioning terraform/keycloak/clients.tf
+#
+# ⚠️ **발행자 URL 은 한 번 정하면 바꾸기 비싸다.** 모든 클라이언트 설정과
+# 이 파일에 박힌다 → findings/20260808_oidc-issuer-implies-port-443.md
+kubernetes_oidc_issuer_url: https://auth.echoprism.cloud/realms/cantaloupe
+kubernetes_oidc_client_id: kubernetes
+
+# 인증 설정 파일이 사는 곳. **디렉터리를 마운트한다** — 핫 리로드가
+# 파일 교체로 일어나므로 파일 하나만 마운트하면 갱신이 전달되지 않는다.
+kubernetes_auth_config_dir: /etc/kubernetes/auth
+kubernetes_auth_config_file: authentication-config.yaml

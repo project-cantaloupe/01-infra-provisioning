@@ -33,6 +33,20 @@ apiServer:
   extraArgs:
     - name: service-node-port-range
       value: "{{ kubernetes_service_node_port_range }}"
+    # 사람 인증. 플래그(--oidc-*)가 아니라 파일을 쓰는 이유는 그 파일이
+    # **핫 리로드되기 때문**이다 — 컨트롤플레인이 1대라 재시작이 곧
+    # 클러스터 조작 정지다. 파일이면 재시작은 처음 한 번뿐이다.
+    - name: authentication-config
+      value: "{{ kubernetes_auth_config_dir }}/{{ kubernetes_auth_config_file }}"
+  # ⚠️ **파일이 아니라 디렉터리를 마운트한다.** 핫 리로드는 파일 교체로
+  # 일어나는데, 파일을 직접 마운트하면 inode 가 바뀌어도 컨테이너 안으로
+  # 전달되지 않는다.
+  extraVolumes:
+    - name: authentication-config
+      hostPath: "{{ kubernetes_auth_config_dir }}"
+      mountPath: "{{ kubernetes_auth_config_dir }}"
+      readOnly: true
+      pathType: DirectoryOrCreate
 networking:
   dnsDomain: "{{ kubernetes_dns_domain }}"
   serviceSubnet: "{{ kubernetes_service_cidr }}"
