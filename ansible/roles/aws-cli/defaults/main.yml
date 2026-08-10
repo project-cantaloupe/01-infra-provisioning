@@ -1,0 +1,8 @@
+---
+# AWS 공식 versioned installer를 사용해 Golden AMI의 실행 도구를 고정한다.
+# 새 버전은 AMI 재생성과 Boot Test를 통해 반영한다.
+aws_cli_version: "2.36.18"
+
+aws_cli_architecture_map:
+  x86_64: x86_64
+  aarch64: aarch64

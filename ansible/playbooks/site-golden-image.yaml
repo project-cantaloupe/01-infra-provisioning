@@ -1,0 +1,23 @@
+---
+# Karpenter가 생성할 AWS Worker의 Golden Image를 만든다.
+# 여기서는 OS·런타임·Kubernetes 패키지와 Tailscale 에이전트만 설치한다.
+# tailnet 가입과 kubeadm join은 노드마다 신원이 생긴 뒤 부팅 단계에서 수행한다.
+- name: Kubernetes Worker Golden Image 구성
+  hosts: all
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/cluster.yml
+  vars:
+    # Golden Image 전체 역할에서 같은 값을 보게 한다. role vars로만 주면 다음
+    # 역할에서는 vpn-mesh 기본값(true)으로 돌아가 노드 상태 정리가 중단된다.
+    tailscale_join: false
+  roles:
+    - role: common
+    - role: security-hardening
+    - role: containerd
+    - role: kubeadm-common
+    - role: vpn-mesh
+    - role: aws-cli
+    - role: karpenter-bootstrap
+    - role: karpenter-image

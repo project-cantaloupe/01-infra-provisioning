@@ -1,0 +1,14 @@
+aws_profile = "cntlp"
+aws_region  = "ap-northeast-2"
+
+# terraform/aws/karpenter output에서 확인한다.
+subnet_id               = "subnet-0123456789abcdef0"
+security_group_id       = "sg-0123456789abcdef0"
+iam_instance_profile    = "cntlp-aws-cicd-packer"
+
+owner      = "team-platform"
+build_id   = "abcdef1"
+expires_on = "2026-08-08"
+
+# 저장소 루트에서 실행할 때 사용하는 Ansible 가상환경 경로다.
+ansible_playbook_command = "ansible/.venv/bin/ansible-playbook"

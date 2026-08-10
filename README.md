@@ -57,12 +57,15 @@ terraform/
   aws/compute/   Control Plane과 Worker EC2
   aws/database/  애플리케이션용 PostgreSQL RDS
   aws/edge/      Public NLB, Target Group, DNS, cert-manager IAM
+  aws/karpenter/ Golden Image Builder와 향후 Karpenter AWS 기반 자원
   gcp/           향후 GCP Worker
   onp/           온프렘 Proxmox Worker
 ansible/
   inventories/   동적 인벤토리 (손으로 IP 를 적지 않는다)
   roles/         OS 설정, K8s 설치, VPN
   playbooks/     실행 진입점
+packer/
+  aws/kubernetes-worker/  Karpenter Worker Golden Image
 ```
 
 ## 인벤토리에 IP 를 적지 않는다

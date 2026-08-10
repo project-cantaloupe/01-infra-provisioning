@@ -1,0 +1,12 @@
+---
+# Control Plane이 Karpenter Worker용 kubeadm token을 주기적으로 갱신한다.
+# Tailscale OAuth Client Secret은 이 플레이북이 아니라 Secrets Manager에 직접 등록한다.
+- name: Karpenter Worker bootstrap 자동화 구성
+  hosts: role_control_plane
+  become: true
+  gather_facts: true
+  roles:
+    - role: aws-cli
+      tags: [aws-cli, karpenter-bootstrap]
+    - role: karpenter-token-rotator
+      tags: [karpenter-bootstrap, kubeadm-token-rotator]
