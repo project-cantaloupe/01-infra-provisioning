@@ -1,0 +1,16 @@
+# 복사해서 terraform.tfvars 로 쓴다. terraform.tfvars 는 .gitignore 에 있다.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# 여기에 비밀번호는 없다. 계정을 만든 뒤 사람이 따로 넣는다 — users.tf 참조.
+
+# ⚠️ 이 값이 그대로 K8s RBAC 주체가 된다 — `oidc:pneuma`.
+# 바꾸면 terraform 이 계정을 **지우고 새로 만든다**(username 은 ForceNew).
+# 그 순간 비밀번호와 세션이 사라지고, 이미 배포된 RoleBinding 은 없는
+# 사람을 가리킨다.
+platform_admin_username = "pneuma"
+
+# 선언적 사용자 프로필이 셋 다 필수로 요구한다 — variables.tf 참조.
+platform_admin_email      = "you@example.com"
+platform_admin_first_name = "이름"
+platform_admin_last_name  = "성"
