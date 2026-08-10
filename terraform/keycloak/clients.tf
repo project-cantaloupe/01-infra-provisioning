@@ -405,3 +405,33 @@ resource "keycloak_openid_client_default_scopes" "opensearch" {
     keycloak_openid_client_scope.groups.name,
   ]
 }
+
+# ── ⚠️ access_token 의 aud 는 자동으로 안 붙는다 ────────────────
+#
+# oauth2-proxy 가 콜백에서 이렇게 죽었다 (2026-08-11 실측).
+#
+#   Error creating session during OAuth2 callback: audience from claim aud
+#   with value [account] does not match with any of allowed audiences
+#   map[opensearch-dashboards:{}]
+#
+# **id_token 의 `aud` 는 client_id 로 자동 설정되지만 access_token 은
+# 아니다.** Keycloak 은 access_token 의 `aud` 에 기본으로 `account` 만
+# 넣는다 — 그 토큰이 원래 Keycloak 자신의 account API 를 향하기 때문이다.
+#
+# K8s API 서버가 `aud=kubernetes` 로 문제없이 통과한 것은 **kubectl 이
+# id_token 을 보내기 때문**이다. 소비자가 어느 토큰을 읽느냐로 갈린다
+# → findings/20260810_admin-cli-lightweight-access-token.md 의 같은 축
+#
+# 고치는 자리를 프록시가 아니라 여기로 잡았다. `--oidc-extra-audience=account`
+# 로 프록시에 예외를 주면 **다른 클라이언트를 향한 토큰도 받아들이게 된다** —
+# audience 검증을 하는 이유가 사라진다.
+resource "keycloak_openid_audience_protocol_mapper" "opensearch" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.opensearch.id
+  name      = "audience"
+
+  included_client_audience = keycloak_openid_client.opensearch.client_id
+
+  add_to_id_token     = false # id_token 에는 이미 들어 있다
+  add_to_access_token = true
+}
