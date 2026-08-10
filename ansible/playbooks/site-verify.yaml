@@ -22,6 +22,9 @@
             is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
           - kubernetes_node_platform is defined
           - kubernetes_node_role is defined
+          - kubernetes_node_region | length > 0
+          - kubernetes_node_instance_type | length > 0
+          - kubernetes_node_platform == 'onp' or kubernetes_node_provider_id | length > 0
         fail_msg: Tailscale 주소 또는 Kubernetes 노드 라벨 변수를 확인하세요.
 
 # kubectl 명령은 단일 Control Plane에서 실행하고 클러스터 상태를 변경하지 않는다.
@@ -93,9 +96,20 @@
               and item.metadata.labels.role | default('')
                   in kubernetes_worker_roles
             )
+          - item.metadata.labels['topology.kubernetes.io/region'] | default('') | length > 0
+          - item.metadata.labels['node.kubernetes.io/instance-type'] | default('') | length > 0
+          - >-
+            (item.metadata.labels.platform == 'onp'
+             and item.spec.providerID | default('') is match('^custom:///'))
+            or
+            (item.metadata.labels.platform == 'aws'
+             and item.spec.providerID | default('') is match('^aws:///'))
+            or
+            (item.metadata.labels.platform == 'gcp'
+             and item.spec.providerID | default('') is match('^gce://'))
         fail_msg: >-
-          {{ item.metadata.name }}의 이름 또는 platform/role 라벨이
-          Cantaloupe 컨벤션과 다릅니다.
+          {{ item.metadata.name }}의 이름, 필수 라벨 또는 providerID가
+          Cantaloupe Node 계약과 다릅니다.
       loop: "{{ (all_cluster_nodes.stdout | from_json)['items'] }}"
       loop_control:
         label: "{{ item.metadata.name }}"
@@ -110,7 +124,7 @@
           - get
           - node
           - "{{ hostvars[item].ansible_facts.hostname }}"
-          - '-o=jsonpath={.status.addresses[?(@.type=="InternalIP")].address}:{.metadata.labels.platform}:{.metadata.labels.role}'
+          - '-o=jsonpath={.status.addresses[?(@.type=="InternalIP")].address}:{.metadata.labels.platform}:{.metadata.labels.role}:{.metadata.labels.topology\.kubernetes\.io/region}:{.metadata.labels.node\.kubernetes\.io/instance-type}:{.spec.providerID}'
       loop: "{{ cluster_inventory_hosts }}"
       register: cluster_node_contracts
       changed_when: false
@@ -123,9 +137,12 @@
             == hostvars[item.item].tailscale_ipv4
             ~ ':' ~ hostvars[item.item].kubernetes_node_platform
             ~ ':' ~ hostvars[item.item].kubernetes_node_role
+            ~ ':' ~ hostvars[item.item].kubernetes_node_region
+            ~ ':' ~ hostvars[item.item].kubernetes_node_instance_type
+            ~ ':' ~ hostvars[item.item].kubernetes_node_provider_id
         fail_msg: >-
           {{ hostvars[item.item].ansible_facts.hostname }}의 InternalIP 또는
-          platform/role 라벨이 인벤토리와 다릅니다.
+          필수 Node 메타데이터가 인벤토리와 다릅니다.
       loop: "{{ cluster_node_contracts.results }}"
       loop_control:
         label: "{{ hostvars[item.item].ansible_facts.hostname }}"

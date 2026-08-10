@@ -64,6 +64,7 @@ compose:
   # 깨진다 — 롤이 그 경우를 검사해서 멈춘다.
   ansible_host: name + '.tail270b85.ts.net'
 
+vars_prefix: gcp_
 keyed_groups:
   - key: labels.platform
     prefix: platform

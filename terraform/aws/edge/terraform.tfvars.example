@@ -1,0 +1,28 @@
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+
+owner      = "team-platform"
+data_class = "user-audio"
+
+# Istio 공개 조회 정책이 배포되기 전에는 false를 유지한다.
+public_read_only_access = false
+
+# NLB에 접근할 Source를 명시한다. 공개 조회 정책이 없으면 /32 단위로 유지한다.
+allowed_ingress_cidrs = ["203.0.113.10/32"]
+
+# Istio ingress gateway Service와 동일한 값을 유지한다.
+audio_ingress_http_node_port   = 30080
+audio_ingress_health_node_port = 32021
+
+# PoC 삭제를 막지 않도록 기본값을 유지한다.
+enable_deletion_protection = false
+
+# Route53 주소가 확정되면 세 값을 함께 설정한다.
+create_dns_record = false
+route53_zone_id   = null
+public_host       = null
+
+# Self-managed Kubernetes OIDC 구성이 준비된 뒤에만 활성화한다.
+enable_cert_manager_iam   = false
+cluster_oidc_provider_arn = null
+cluster_oidc_issuer_url   = null

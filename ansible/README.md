@@ -23,24 +23,32 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kuberne
 |---|---|
 | `common` | swap 영구 비활성화, 커널 모듈과 sysctl 설정 |
 | `security-hardening` | SSH 보안, UFW, Tailscale-Calico 재귀 루프 차단 |
-| `vpn-mesh` | Tailscale 설치·가입, 노드의 Tailscale IPv4 수집 |
+| `vpn-mesh` | Tailscale 설치·가입, MagicDNS Split DNS와 노드 IPv4 설정 |
 | `tailscale-serve` | Argo CD NodePort를 MagicDNS HTTPS로 연결 |
 | `containerd` | containerd 설치, `SystemdCgroup=true` 설정 |
 | `kubeadm-common` | kubelet·kubeadm·kubectl 버전 고정 및 hold |
 | `kubeadm-control-plane` | 단일 Control Plane 초기화와 필수 노드 라벨 적용 |
 | `cni-calico` | Tigera Operator와 Calico VXLAN 네트워크 설치 |
 | `kubeadm-worker` | 단기 토큰 생성, Worker 가입, 토큰 폐기와 라벨 적용 |
-| `site-node-labels` | 수동 join 노드까지 이름을 기준으로 필수 라벨 보정 |
+| `site-node-labels` | 수동 join 노드까지 필수 라벨과 providerID 계약 검증 |
+| `aws-cli` | Golden AMI에 버전 고정 AWS CLI v2 설치 |
+| `karpenter-bootstrap` | 신규 EC2의 Tailscale 가입 후 kubeadm join 실행기 설치 |
+| `karpenter-token-rotator` | Control Plane에서 Karpenter Worker용 kubeadm token 주기적 갱신 |
+| `karpenter-image` | AMI 캡처 전 kubeadm·Tailscale·machine-id·SSH host key 정리 |
 
 클러스터 이름은 `cntlp-k8s`이고 Kubernetes API와 각 노드의
 `InternalIP`에는 Tailscale IPv4를 사용한다. 플랫폼 구분은 노드 이름과
-`platform` 라벨에만 남기며 AWS Worker에는 `role=service`를 적용한다.
+`platform` 라벨에만 남기며 AWS Worker에는 `role=service`를 적용한다. 모든 Node는
+추가로 `topology.kubernetes.io/region`과
+`node.kubernetes.io/instance-type`을 가져야 한다. AWS/GCP의 `spec.providerID`는
+가격 키가 아니라 실제 VM 신원 검증에 사용한다.
 
 ## 재실행 안전성
 
 - `/etc/kubernetes/admin.conf`가 있으면 `kubeadm init`을 다시 실행하지 않는다.
 - `/etc/kubernetes/kubelet.conf`가 있으면 Worker를 다시 join하지 않는다.
 - 이미 tailnet에 가입한 노드는 `tailscale up`을 다시 실행하지 않는다.
+- 이미 가입한 노드의 MagicDNS 수용 설정은 `tailscale set`으로 필요한 경우만 갱신한다.
 - 기존 수동 구축 Worker에 `--node-ip` 영구 설정이 없으면 한 번 보완하고
   kubelet을 재시작한다.
 - 정상 재구성 과정에서는 `kubeadm reset`을 실행하지 않는다.
@@ -127,6 +135,26 @@ unset CNTLP_TAILSCALE_AUTH_KEY
 5. 클러스터 전체 노드의 `platform`/`role` 라벨 보정
 6. 노드 Ready, Tailscale InternalIP, 필수 라벨 검증
 
+Golden Image는 일반 클러스터 구성과 분리한다. Packer가 임시 EC2에
+`site-golden-image.yaml`을 실행하며 Tailscale은 설치만 하고 가입하지 않는다.
+빌드와 비용·삭제 경계는
+[`packer/aws/kubernetes-worker/README.md`](../packer/aws/kubernetes-worker/README.md)를
+따른다.
+
+Karpenter Worker 자동 가입을 운영할 때는 Terraform으로 두 bootstrap Secret과
+최소 IAM Policy를 먼저 적용한 뒤 Control Plane 회전 타이머를 구성한다.
+
+```bash
+ANSIBLE_CONFIG="$PWD/ansible.cfg" \
+  ansible-playbook -i inventories/aws/aws_ec2.yaml \
+  playbooks/site-karpenter-bootstrap-automation.yaml
+```
+
+이 플레이북은 Tailscale OAuth Client Secret을 다루지 않는다. OAuth 값은
+Terraform의 `prepare-bootstrap-secret.sh`가 숨김 입력으로 Secrets Manager에
+직접 등록한다. kubeadm token은 Control Plane에서 TTL 24시간으로 생성되며
+systemd timer가 12시간마다 갱신한다.
+
 ## 단계별 실행
 
 문제가 생긴 단계를 구분하거나 구축 과정을 확인하려면 같은 순서로 하나씩
@@ -164,6 +192,15 @@ GCP와 On-Prem도 동적 인벤토리를 사용한다. GCP VM에는 Terraform이
 `platform=gcp`와 `role=monitoring|logging`을, Proxmox VM에는
 `platform-onp`와 `role-devops`를 부여한다. 접속 정보나 고정 IP를 정적
 `hosts.ini`에 복사하지 않는다.
+
+동적 인벤토리는 공급자 API의 실제 region/machine type을 Ansible 변수로 전달한다.
+On-prem은 Terraform이 CPU/Memory 입력으로 `custom-<vCPU>vcpu-<GiB>gib` 태그를
+생성한다. kubeadm 역할은 다음 Node 계약을 적용한다.
+
+```text
+platform + role + topology.kubernetes.io/region
++ node.kubernetes.io/instance-type + cloud spec.providerID
+```
 
 ## Argo CD MagicDNS 접속
 

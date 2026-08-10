@@ -18,6 +18,9 @@
       - tailscale_ipv4 is defined
       - kubernetes_node_platform | length > 0
       - kubernetes_node_role | length > 0
+      - kubernetes_node_region | length > 0
+      - kubernetes_node_instance_type | length > 0
+      - kubernetes_node_platform == 'onp' or kubernetes_node_provider_id | length > 0
       - ansible_facts.hostname
         is match('^cntlp-(aws|gcp|onp)-wk-[0-9]{2}$')
     fail_msg: Control Plane 그룹, Tailscale IP 또는 Worker 명명 규칙을 확인하세요.
@@ -392,7 +395,7 @@
       - get
       - node
       - "{{ ansible_facts.hostname }}"
-      - "-o=jsonpath={.metadata.labels.platform}:{.metadata.labels.role}"
+      - "-o=jsonpath={.metadata.labels.platform}:{.metadata.labels.role}:{.metadata.labels.topology\\.kubernetes\\.io/region}:{.metadata.labels.node\\.kubernetes\\.io/instance-type}"
   delegate_to: "{{ groups['role_control_plane'][0] }}"
   register: worker_labels
   changed_when: false
@@ -409,9 +412,12 @@
       - "{{ ansible_facts.hostname }}"
       - "platform={{ kubernetes_node_platform }}"
       - "role={{ kubernetes_node_role }}"
+      - "topology.kubernetes.io/region={{ kubernetes_node_region }}"
+      - "node.kubernetes.io/instance-type={{ kubernetes_node_instance_type }}"
       - --overwrite
   delegate_to: "{{ groups['role_control_plane'][0] }}"
   when: >-
     worker_labels.stdout | trim
-    != kubernetes_node_platform ~ ':' ~ kubernetes_node_role
+    != kubernetes_node_platform ~ ':' ~ kubernetes_node_role ~ ':'
+       ~ kubernetes_node_region ~ ':' ~ kubernetes_node_instance_type
   changed_when: true

@@ -7,3 +7,7 @@ kubernetes_node_platform: aws
 # compute.tf 의 「role 태그를 붙이지 않는다」 주석). Vault 는 파드 경로가 없어서
 # 광고하면 Tailscale 이 그 노드를 primary 서브넷 라우터로 뽑았을 때 파드
 # 트래픽이 통째로 블랙홀이 된다. 광고는 role_control_plane.yml 에 있다.
+
+kubernetes_node_region: "{{ aws_placement.region }}"
+kubernetes_node_instance_type: "{{ aws_instance_type }}"
+kubernetes_node_provider_id: "aws:///{{ aws_placement.availability_zone }}/{{ aws_instance_id }}"

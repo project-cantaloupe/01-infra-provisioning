@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+
+exec > >(tee -a /var/log/cntlp-worker-bootstrap.log) 2>&1
+
+hostnamectl set-hostname ${node_name}
+
+cat >/etc/cloud/cloud.cfg.d/99-preserve-hostname.cfg <<'CFG'
+preserve_hostname: true
+CFG
+
+%{ if bootstrap_enabled ~}
+/usr/local/sbin/cntlp-worker-bootstrap \
+  --aws-region '${aws_region}' \
+  --tailscale-oauth-secret-id '${tailscale_oauth_secret_id}' \
+  --kubeadm-join-secret-id '${kubeadm_join_secret_id}' \
+  --node-name '${node_name}'
+%{ endif ~}

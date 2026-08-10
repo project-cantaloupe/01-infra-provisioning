@@ -1,0 +1,18 @@
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+
+owner = "team-platform"
+
+# Karpenter Controller IAM을 기존 Control Plane Role에 붙일 때만 CLI -var로 전달한다.
+# enable_controller_foundation = true
+
+# Golden AMI Boot Test를 실행할 때만 CLI -var로 전달한다.
+# enable_boot_test     = true
+# boot_test_ami_name   = "cntlp-aws-cicd-k8s-worker-abcdef0"
+# boot_test_expires_on = "2099-12-31"
+
+# Tailscale + kubeadm 자동 가입과 Karpenter Node lifecycle을 검증할 때만
+# CLI -var로 전달한다.
+# enable_bootstrap_foundation = true
+# boot_test_join_cluster      = true
+# bootstrap_expires_on        = "2099-12-31"

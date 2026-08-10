@@ -37,8 +37,16 @@ crash.*.log
 *.pem
 *.key
 
+# CloudFront 운영 공개키는 환경별로 교체하며 테스트 Fixture만 Git에서 관리한다.
+/terraform/aws/audio/cloudfront-public-key.pub
+
 # Ansible 실행용 로컬 Python 가상환경
 ansible/.venv/
 
 # Ansible Galaxy에서 내려받은 로컬 Collection
 ansible/.collections/
+
+# Packer의 환경별 입력과 로컬 빌드 산출물
+*.pkrvars.hcl
+packer_cache/
+packer/**/manifest.json

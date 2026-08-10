@@ -81,3 +81,22 @@ variable "root_volume_size" {
     error_message = "root_volume_size must be at least 20 GiB."
   }
 }
+
+# AWS Service Worker Node에 Instance Profile을 붙일지 결정한다. Self-managed
+# Kubernetes에는 EKS Pod Identity가 없고 OIDC Provider 등록은 단일 Control
+# Plane에서 apiserver 플래그를 바꿔야 해 이 PoC 범위를 넘는다. 대신 Node
+# Instance Profile로 Pod가 IMDS에서 임시 자격증명을 받는다.
+variable "enable_worker_instance_profile" {
+  description = "Whether to attach an IAM instance profile to service worker nodes"
+  type        = bool
+  default     = false
+}
+
+# Control Plane Node에서 Kubernetes Secret을 만들 때 필요한 최소 조회 권한을
+# IMDS로 받게 할지 결정한다. Control Plane은 이미 admin.conf로 모든 Kubernetes
+# Secret을 읽을 수 있으므로 노출 범위가 실질적으로 넓어지지 않는다.
+variable "enable_control_plane_instance_profile" {
+  description = "Whether to attach an IAM instance profile to the control plane node"
+  type        = bool
+  default     = false
+}

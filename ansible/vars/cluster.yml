@@ -9,6 +9,32 @@ kubernetes_control_plane_port: 6443
 kubernetes_pod_cidr: 10.244.0.0/16
 kubernetes_service_cidr: 10.96.0.0/12
 kubernetes_dns_domain: cluster.local
+
+# ── NodePort 범위를 443 까지 내린다 ────────────────────────────
+#
+# 기본값은 30000-32767 이다. **443 을 포함시키는 것이 유일한 목적이고**,
+# 이유는 OIDC 발행자 URL 에 있다.
+#
+# Keycloak 의 발행자는 `https://auth.echoprism.cloud` 이고 이 문자열이
+# 모든 토큰의 `iss` 클레임과 모든 클라이언트의 discovery 설정에 박힌다.
+# `https://이름` 은 **묵시적으로 443** 이라, 서비스가 30843 에만 있으면
+# 발행자가 가리키는 곳에 아무도 없다. 포트를 URL 에 적어 넣으면
+# (`...cloud:30843`) 되지만 그건 NodePort 라는 구현 선택이 영구 식별자로
+# 새어나오는 것이다. 나중에 게이트웨이를 세울 때 클라이언트 전부를
+# 재등록하고 발급된 토큰을 무효화해야 한다.
+#
+# ⚠️ **이 값을 좁히면 이미 443 을 쓰는 Service 가 조용히 안 깨진다.**
+# apiserver 는 기동 시 범위 밖 nodePort 를 검사하지 않는다. 다음 갱신
+# 때 거부당하는데, 그때는 원인이 안 보인다.
+#
+# 무작위 할당이 443 을 집어가지 않는가 — 안 집어간다. 아래 하단 대역은
+# **명시적으로 요청한 nodePort 를 위해 남겨둔다**(KEP-3070,
+# ServiceNodePortStaticSubrange). 자동 할당은 그 위에서 시작한다.
+# 실제로 남는 크기는 apiserver 가 범위 크기로 계산하니 확인은 아래로 한다.
+#
+#   kubectl -n kube-system logs -l component=kube-apiserver \
+#     | grep -i "node port range\|static subrange"
+kubernetes_service_node_port_range: "443-32767"
 kubernetes_cri_socket: unix:///var/run/containerd/containerd.sock
 kubernetes_admin_conf: /etc/kubernetes/admin.conf
 

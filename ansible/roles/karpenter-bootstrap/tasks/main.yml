@@ -1,0 +1,20 @@
+---
+- name: Karpenter Worker bootstrap 실행기 설치
+  ansible.builtin.copy:
+    src: cntlp-worker-bootstrap
+    dest: /usr/local/sbin/cntlp-worker-bootstrap
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Karpenter Worker bootstrap 문법 검증
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -n
+      - /usr/local/sbin/cntlp-worker-bootstrap
+  changed_when: false
+
+- name: Bootstrap AWS CLI 사전 조건 확인
+  ansible.builtin.command: /usr/local/bin/aws --version
+  changed_when: false

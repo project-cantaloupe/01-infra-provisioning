@@ -53,11 +53,11 @@
     cache_valid_time: 3600
   when: tailscale_manage_packages | bool
 
-- name: tailscaled 서비스 활성화
+- name: tailscaled 서비스 상태 설정
   ansible.builtin.systemd:
     name: tailscaled
     enabled: true
-    state: started
+    state: "{{ 'started' if tailscale_join | bool else 'stopped' }}"
 
 # ── 가입 상태 판정 ────────────────────────────────────────────
 #
@@ -69,12 +69,14 @@
   changed_when: false
   failed_when: false
   check_mode: false
+  when: tailscale_join | bool
 
 - name: 현재 BackendState 파싱
   ansible.builtin.set_fact:
     tailscale_backend_before: >-
       {{ (tailscale_status_before.stdout | from_json).BackendState | default('Unknown')
          if tailscale_status_before.rc == 0 else 'Unknown' }}
+  when: tailscale_join | bool
 
 - name: 미가입 노드에 사용할 Tailscale 인증 키 확인
   ansible.builtin.assert:
@@ -86,7 +88,9 @@
         CNTLP_TAILSCALE_AUTH_KEY=tskey-auth-xxxx ansible-playbook ...
       재사용 가능(reusable) + 태그 부여 권한이 있는 키여야 합니다.
       노드용은 ephemeral 로 발급하는 것을 권합니다 — defaults/main.yml 참고.
-  when: tailscale_backend_before != 'Running'
+  when:
+    - tailscale_join | bool
+    - tailscale_backend_before != 'Running'
 
 # 키와 같은 이유로 여기서 막는다. 태그가 비었거나 tailnet 에 없는 값이면
 # `tailscale up` 이 "requested tags ... are invalid or not permitted" 로 죽는데,
@@ -116,7 +120,9 @@
   when: tailscale_backend_before != 'Running'
 
 - name: 미가입 노드를 tailnet 에 등록
-  when: tailscale_backend_before != 'Running'
+  when:
+    - tailscale_join | bool
+    - tailscale_backend_before != 'Running'
   block:
     - name: Tailscale 인증 키 임시 배치
       ansible.builtin.copy:
@@ -128,6 +134,8 @@
       no_log: true
 
     # --accept-dns 는 tailscale_accept_dns 가 정한다 — defaults/main.yml 참고.
+    # Host의 Tailscale HTTPS 이름은 MagicDNS로 해석한다. Pod의 Cluster DNS는
+    # kubelet과 CoreDNS가 별도로 제공하므로 Host의 Split DNS와 충돌하지 않는다.
     #
     # --advertise-routes 는 값이 있을 때만 붙인다. 빈 문자열로 넘기면
     # 기존에 광고 중이던 경로를 지워버린다.
@@ -161,17 +169,25 @@
 # 플레이북은 성공하고 노드만 옛 설정으로 남는다.
 #
 # `tailscale set` 은 가입 상태와 무관하게 먹으므로 여기서 매번 맞춘다.
-- name: 현재 MagicDNS 설정 조회
+#
+# **전부 `tailscale_join` 아래에 둔다.** Golden Image 빌드는 패키지만 깔고
+# tailnet 에 가입하지 않는다 (defaults/main.yml — 이미지에 machine key 가
+#들어가면 그 이미지로 만든 노드가 전부 같은 장치 신원을 공유한다). 가입하지
+# 않은 이미지에서는 `tailscale debug prefs` 가 읽을 prefs 자체가 없다.
+- name: 현재 tailnet prefs 조회
   ansible.builtin.command: tailscale debug prefs
   register: _ts_prefs
   changed_when: false
   check_mode: false
+  when: tailscale_join | bool
 
 - name: MagicDNS 설정을 맞춘다
   ansible.builtin.command:
     cmd: tailscale set --accept-dns={{ tailscale_accept_dns | bool | lower }}
-  when: (_ts_prefs.stdout | from_json).CorpDNS | default(false) | bool
-        != (tailscale_accept_dns | bool)
+  when:
+    - tailscale_join | bool
+    - (_ts_prefs.stdout | from_json).CorpDNS | default(false) | bool
+      != (tailscale_accept_dns | bool)
   changed_when: true
 
 # 광고 경로도 같은 이유로 여기 있다. `up` 인자로만 두면 두 겹으로 막힌다.
@@ -200,8 +216,10 @@
     cmd: >-
       tailscale set
       --advertise-routes={{ tailscale_advertise_routes | join(',') }}
-  when: ((_ts_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort)
-        != (tailscale_advertise_routes | sort)
+  when:
+    - tailscale_join | bool
+    - ((_ts_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort)
+      != (tailscale_advertise_routes | sort)
   changed_when: true
 
 # 경로 수신도 같은 이유로 여기 있다. 그리고 여기 있어야 하는 이유가 하나 더 있다.
@@ -220,8 +238,10 @@
     cmd: >-
       tailscale set
       --accept-routes={{ tailscale_accept_routes | bool | lower }}
-  when: ((_ts_prefs.stdout | from_json).RouteAll | default(false, true) | bool)
-        != (tailscale_accept_routes | bool)
+  when:
+    - tailscale_join | bool
+    - ((_ts_prefs.stdout | from_json).RouteAll | default(false, true) | bool)
+      != (tailscale_accept_routes | bool)
   changed_when: true
 
 # Tailscale SSH 도 정확히 같은 함정이었다. `--ssh` 가 위 `tailscale up` 인자로만
@@ -245,8 +265,10 @@
     cmd: >-
       tailscale set
       --ssh={{ tailscale_ssh | bool | lower }}
-  when: ((_ts_prefs.stdout | from_json).RunSSH | default(false, true) | bool)
-        != (tailscale_ssh | bool)
+  when:
+    - tailscale_join | bool
+    - ((_ts_prefs.stdout | from_json).RunSSH | default(false, true) | bool)
+      != (tailscale_ssh | bool)
   changed_when: true
 
 # ── 결과 검증 ─────────────────────────────────────────────────
@@ -256,6 +278,7 @@
   register: tailscale_status_after
   changed_when: false
   check_mode: false
+  when: tailscale_join | bool
 
 - name: tailnet IP·상태·등록 이름 추출
   ansible.builtin.set_fact:
@@ -266,6 +289,7 @@
     tailscale_registered_name: >-
       {{ ((tailscale_status_after.stdout | from_json).Self.DNSName | default('')).split('.')
          | first | default('') }}
+  when: tailscale_join | bool
 
 - name: 실제로 붙었는지 검사
   ansible.builtin.assert:
@@ -277,6 +301,7 @@
       tailnet 조인에 실패했다. BackendState={{ tailscale_backend }},
       IP={{ tailscale_ipv4 }}. auth key 가 만료됐거나 태그 부여 권한이 없을 수 있다.
     success_msg: "tailnet 조인 완료 — {{ tailscale_hostname }} = {{ tailscale_ipv4 }}"
+  when: tailscale_join | bool
 
 # ── VM 을 다시 만들었을 때 조용히 틀어지는 지점 ────────────────
 #
@@ -304,9 +329,11 @@
       지운 뒤 이 롤을 다시 돌린다. 반복될 일이면 auth key 를 ephemeral 로
       발급한다 — references/20260801_infra-07-onp-vm-recreate.md 참고.
     success_msg: "tailnet 이름 확인 — {{ tailscale_registered_name }}"
+  when: tailscale_join | bool
 
 # kubeadm join/init 이 이 주소를 --node-ip 로 쓴다. 영역 간 통신이 메시를 타야
 # 하므로 노드 IP 가 LAN 주소(192.168.x)면 다른 영역에서 못 닿는다.
 - name: 이후 Kubernetes 역할에서 사용할 Tailscale IPv4 안내
   ansible.builtin.debug:
     msg: "이 노드의 메시 IP = {{ tailscale_ipv4 }} (kubeadm --node-ip 로 쓴다)"
+  when: tailscale_join | bool

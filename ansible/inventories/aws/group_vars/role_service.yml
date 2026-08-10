@@ -5,3 +5,7 @@ kubernetes_node_role: service
 # 워커는 플랫폼과 무관하게 한 태그를 쓴다. 실행 위치는 태그가 아니라
 # platform 라벨이 가른다 (00-cantaloupe-resources/resource-naming-convention).
 tailscale_tags: "tag:cntlp-wk"
+
+# Audio Image는 Tailscale HTTPS Harbor 이름을 사용한다. Host의 Split DNS 설정이며
+# Pod는 kubelet의 clusterDNS를 통해 CoreDNS를 계속 사용한다.
+tailscale_accept_dns: true

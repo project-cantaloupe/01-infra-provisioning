@@ -1,0 +1,42 @@
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+
+owner      = "team-audio"
+data_class = "user-audio"
+
+# 브라우저가 Presigned URL로 S3에 직접 PUT하고 CloudFront에서 GET하므로,
+# Web을 실제로 띄운 Origin이 여기 없으면 업로드와 재생이 CORS에서 막힌다.
+# NLB 주소로 접속한다면 그 주소도 넣는다. 경로와 마지막 /는 넣지 않는다.
+web_allowed_origins = [
+  "https://audio.example.com",
+  "http://localhost:5173",
+]
+
+# 128 KB 초과 원본은 30일 뒤 Standard-IA, 60일 뒤 Glacier Instant Retrieval로 이동한다.
+quarantine_standard_ia_transition_days = 30
+quarantine_glacier_ir_transition_days  = 60
+noncurrent_version_retention_days      = 7
+queue_max_receive_count                = 3
+
+# 비용이 발생하는 구성은 plan을 확인한 뒤 단계별로 활성화한다.
+# 공개키 파일을 만든 뒤 두 값을 함께 활성화한다.
+enable_cloudfront             = false
+cloudfront_public_key_path    = null
+cloudfront_price_class        = "PriceClass_200"
+
+# Self-managed Kubernetes OIDC Provider를 준비한 뒤 활성화한다.
+enable_workload_iam           = false
+cluster_oidc_provider_arn     = null
+cluster_oidc_issuer_url       = null
+
+# OIDC가 없는 동안 Workload 권한 합집합을 Compute Stack의 Worker Role에 붙인다.
+# 빠뜨리면 기본값 false로 떨어져 이미 만들어진 정책을 destroy하는 plan이 나온다.
+enable_node_role_policy = true
+
+# KEDA를 설치할 때만 Control Plane Role에 transcode Queue 조회 권한을 붙인다.
+enable_keda_controller_policy = false
+
+audio_namespace                 = "apps"
+audio_api_service_account       = "audio-api"
+audio_events_service_account    = "audio-events"
+audio_transcode_service_account = "audio-transcode"

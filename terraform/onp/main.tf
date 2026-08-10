@@ -5,6 +5,11 @@ locals {
   ]
 
   use_dhcp = length(var.worker_ipv4_addresses) == 0
+  worker_instance_type = format(
+    "custom-%dvcpu-%dgib",
+    var.worker_cpu,
+    floor(var.worker_memory / 1024)
+  )
 }
 
 # ── OS 이미지 ───────────────────────────────────────────────────
@@ -70,7 +75,12 @@ resource "proxmox_virtual_environment_vm" "worker" {
   # Proxmox 호스트 자신(`pve`)도 호스트로 노출해서 하이퍼바이저에 swap off·
   # containerd·kubeadm join 이 돌아간다. 자세한 것은 site-workers.yaml 주석.
   # 이 태그가 그대로 kubeadm join 의 --node-labels 가 된다.
-  tags = ["platform-onp", "role-devops"]
+  tags = [
+    "platform-onp",
+    "role-devops",
+    "region-on-premise",
+    "instance-type-${local.worker_instance_type}"
+  ]
 
   # destroy 시 정지부터 한다. 안 그러면 락이 걸린 채로 실패한다.
   stop_on_destroy = true

@@ -41,3 +41,23 @@ output "worker_node_metadata" {
     }
   ]
 }
+
+output "worker_role_name" {
+  description = "IAM role name attached to service worker nodes when enabled"
+  value       = var.enable_worker_instance_profile ? aws_iam_role.worker[0].name : null
+}
+
+output "worker_role_arn" {
+  description = "IAM role ARN attached to service worker nodes when enabled"
+  value       = var.enable_worker_instance_profile ? aws_iam_role.worker[0].arn : null
+}
+
+output "worker_instance_profile_name" {
+  description = "IAM instance profile name attached to service worker nodes when enabled"
+  value       = var.enable_worker_instance_profile ? aws_iam_instance_profile.worker[0].name : null
+}
+
+output "control_plane_role_name" {
+  description = "IAM role name attached to the control plane node when enabled"
+  value       = var.enable_control_plane_instance_profile ? aws_iam_role.control_plane[0].name : null
+}

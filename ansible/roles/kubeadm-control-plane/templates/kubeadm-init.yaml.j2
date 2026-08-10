@@ -10,6 +10,12 @@ nodeRegistration:
   kubeletExtraArgs:
     - name: node-ip
       value: "{{ tailscale_ipv4 }}"
+    - name: node-labels
+      value: "platform={{ kubernetes_node_platform }},role={{ kubernetes_node_role }},topology.kubernetes.io/region={{ kubernetes_node_region }},node.kubernetes.io/instance-type={{ kubernetes_node_instance_type }}"
+{% if kubernetes_node_provider_id | length > 0 %}
+    - name: provider-id
+      value: "{{ kubernetes_node_provider_id }}"
+{% endif %}
 ---
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
@@ -20,7 +26,21 @@ apiServer:
   certSANs:
     - "{{ tailscale_ipv4 }}"
     - "{{ ansible_facts.hostname }}"
+  # v1beta4 의 extraArgs 는 맵이 아니라 name/value 목록이다. v1beta3 문법
+  # (`service-node-port-range: "..."`)을 쓰면 kubeadm 이 파싱 단계에서 죽는다.
+  #
+  # 443 을 포함시키는 이유는 vars/cluster.yml 의 같은 이름 변수 옆에 있다.
+  extraArgs:
+    - name: service-node-port-range
+      value: "{{ kubernetes_service_node_port_range }}"
 networking:
   dnsDomain: "{{ kubernetes_dns_domain }}"
   serviceSubnet: "{{ kubernetes_service_cidr }}"
   podSubnet: "{{ kubernetes_pod_cidr }}"
+---
+# Metrics Server가 kubelet의 10250 HTTPS 인증서를 검증할 수 있게 한다.
+# kubelet-serving CSR은 kube-controller-manager가 자동 승인하지 않는다.
+# 노드명과 SAN을 검증한 뒤 운영자가 승인해야 인증서가 발급된다.
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+serverTLSBootstrap: true

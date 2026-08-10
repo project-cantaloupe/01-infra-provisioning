@@ -35,6 +35,11 @@ ansible-playbook  -i inventories/aws/aws_ec2.yaml playbooks/site-cluster.yaml
 
 # 5. 그 위에 얹는 것
 terraform -chdir=terraform/aws/database apply
+
+# 6. Istio ingress gateway 가 준비된 뒤에 Public NLB 를 만든다.
+#    게이트웨이가 없으면 타깃이 비어 헬스체크가 계속 실패한다
+terraform -chdir=terraform/aws/edge init -reconfigure
+terraform -chdir=terraform/aws/edge apply
 ```
 
 **`source scripts/cntlp-env.sh` 없이는 3번 이후가 안 된다.** 그것이 Vault 에서
@@ -69,15 +74,21 @@ Argo CD 설치와 최초 Root Application 등록은 클러스터 구성 뒤 별�
 | 06 | `infra-06-tfstate` | 상태 버킷·암호화 키를 만들거나 고칠 때 |
 | 07 | `infra-07-onp-vm-recreate` | Proxmox 워커를 지우고 다시 만들 때 |
 
-전부 `references/20260801_<슬러그>.md` 다. 코드 주석의
+위 일곱은 전부 `references/20260801_<슬러그>.md` 다. 코드 주석의
 `→ references/…` 도 같은 곳을 가리킨다.
 
-**리포에 남는 문서는 넷뿐이다.** 그 디렉터리를 고칠 때 같이 보는 것이라
-코드 옆에 둔다 — [`terraform/onp/README.md`](terraform/onp/README.md)
-(Proxmox 사전 설정), [`terraform/vault/README.md`](terraform/vault/README.md)
-(정책·AppRole), [`ansible/README.md`](ansible/README.md) (준비와 단계별 실행),
-[`ansible/roles/vault-server/README.md`](ansible/roles/vault-server/README.md)
-(설치 롤).
+한 건이 더 있고 슬러그 규칙이 다르다 — 번호 순서에 들어가는 구축 절차가
+아니라 필요할 때만 펴는 전환 런북이라서다.
+
+| 슬러그 | 언제 편다 |
+|---|---|
+| `references/20260810_k8s-kubelet-serving-tls.md` | Metrics Server 가 kubelet 10250 을 검증하도록 serving 인증서를 노드 한 대씩 전환할 때 |
+
+**리포에 남는 문서는 디렉터리 README 뿐이다.** 그 코드를 고칠 때 같이 보는
+것이라 코드 옆에 둔다 — `ansible/README.md`,
+`ansible/roles/vault-server/README.md`, `packer/aws/kubernetes-worker/README.md`,
+그리고 `terraform/` 의 `onp`·`vault`·`audio`·`database`·`edge`·`karpenter`.
+**새로 늘리지 않는다.** 절차가 들어가기 시작하면 `references/` 로 옮긴다.
 
 ## 구조
 
@@ -90,6 +101,8 @@ terraform/
   aws/vault/     Vault EC2 · auto-unseal KMS 키 · 스냅샷 버킷
   aws/compute/   Control Plane과 Worker EC2
   aws/database/  애플리케이션용 PostgreSQL RDS
+  aws/edge/      Public NLB, Target Group, DNS, cert-manager IAM
+  aws/karpenter/ Golden Image Builder 와 향후 Karpenter AWS 기반 자원
   gcp/           GCP Worker
   onp/           온프렘 Proxmox Worker
   vault/         Vault 내부 — 정책·AppRole·감사 (자원이 아니라 설정)
@@ -97,6 +110,8 @@ ansible/
   inventories/   동적 인벤토리 (손으로 IP 를 적지 않는다)
   roles/         OS 설정, K8s 설치, VPN, Vault 설치
   playbooks/     실행 진입점
+packer/
+  aws/kubernetes-worker/     Karpenter Worker Golden Image
 scripts/
   bootstrap-workstation.sh   도구 설치
   cntlp-env.sh               Vault 에서 값을 당겨 셸을 세운다
@@ -125,13 +140,20 @@ AWS·GCP의 공통 관리 태그는 `org`, `owner`, `managed-by`, `lifecycle`,
 
 ## Terraform 상태는 S3 에 둔다
 
-여덟 스택 전부가 `cntlp-aws-tfstate` 버킷의 서로 다른 `key` 를 쓴다.
+열세 스택 전부가 `cntlp-aws-tfstate` 버킷의 서로 다른 `key` 를 쓴다.
 버킷과 KMS 키만 terraform 밖에서 손으로 만든다 — 자기 상태를 자기가 만든
 자원에 담을 수 없기 때문이다.
 
 **새 스택을 만들 때 `backend.tf` 에 `kms_key_id` 를 빠뜨리지 않는다.**
 `encrypt = true` 만으로는 SSE-S3 이고, apply 는 성공하므로 아무도 모른다
 → `references/20260801_infra-06-tfstate.md`
+
+```bash
+# 빠진 스택을 찾는다
+for f in $(grep -rl --include=backend.tf 'backend "s3"' terraform); do
+  grep -q kms_key_id "$f" || echo "$f"
+done
+```
 
 ## 클러스터 안쪽 거버넌스는 여기 없다
 

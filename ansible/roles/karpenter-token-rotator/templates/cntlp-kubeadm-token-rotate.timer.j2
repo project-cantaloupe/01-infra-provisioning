@@ -1,0 +1,12 @@
+[Unit]
+Description=Cantaloupe Karpenter kubeadm token rotation schedule
+
+[Timer]
+OnBootSec={{ karpenter_token_rotator_on_boot_delay }}
+OnUnitActiveSec={{ karpenter_token_rotator_interval }}
+RandomizedDelaySec={{ karpenter_token_rotator_randomized_delay }}
+Persistent=true
+Unit=cntlp-kubeadm-token-rotate.service
+
+[Install]
+WantedBy=timers.target

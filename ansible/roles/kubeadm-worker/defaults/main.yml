@@ -38,3 +38,6 @@ kubernetes_node_platform: >-
 kubernetes_node_role: >-
   {{ (group_names | select('match', '^role_') | first | default(''))
      | replace('role_', '') }}
+kubernetes_node_region: ""
+kubernetes_node_instance_type: ""
+kubernetes_node_provider_id: ""

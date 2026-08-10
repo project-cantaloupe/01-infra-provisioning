@@ -62,3 +62,7 @@ tailscale_tags: "tag:cntlp-wk"
 # no_log 는 롤이 이미 걸어 뒀다. 값은 -vvv 에도 안 찍힌다.
 tailscale_auth_key: >-
   {{ lookup('community.hashi_vault.vault_kv2_get', 'onp/tailscale').secret.auth_key }}
+
+kubernetes_node_platform: onp
+# 외부 Cloud Provider 신원은 아니지만 재생성 후 Node/VM 대응을 검증할 팀 로컬 ID다.
+kubernetes_node_provider_id: "custom:///{{ proxmox_name }}"
