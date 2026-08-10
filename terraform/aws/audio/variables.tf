@@ -225,3 +225,12 @@ variable "enable_node_role_policy" {
   type        = bool
   default     = false
 }
+
+# KEDA Operator는 AWS Control Plane Node에 고정되고 해당 Node Instance Profile의
+# 단기 자격 증명으로 transcode Queue 길이만 읽는다. Self-managed Cluster이므로
+# EKS Pod Identity나 장기 Access Key를 사용하지 않는다.
+variable "enable_keda_controller_policy" {
+  description = "Whether to allow the control plane node role to read transcode queue attributes for KEDA"
+  type        = bool
+  default     = false
+}

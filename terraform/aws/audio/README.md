@@ -146,6 +146,20 @@ cluster_oidc_issuer_url   = "https://..."
 Node Instance Profile 대체안은 이 Foundation에 포함하지 않고 별도 변경으로
 권한 노출과 IMDS 차단 경계를 함께 검토한다.
 
+## KEDA Queue 조회 권한
+
+Self-managed Kubernetes에서는 EKS Pod Identity를 사용하지 않는다. KEDA Operator를
+AWS Control Plane Node에 고정한 뒤 해당 Node Instance Profile에 transcode Queue의
+속성 조회 권한만 추가한다.
+
+```hcl
+enable_keda_controller_policy = true
+```
+
+정책은 `sqs:GetQueueAttributes`만 `cntlp-aws-queue-transcode`에 허용한다. KEDA는
+메시지를 수신하거나 삭제하지 않으며 장기 AWS Access Key를 Kubernetes Secret에
+저장하지 않는다. KEDA를 제거할 때 이 값을 `false`로 되돌려 정책도 함께 제거한다.
+
 ## 비용과 삭제 경계
 
 - S3 저장량, Versioning된 이전 객체, 요청과 데이터 전송

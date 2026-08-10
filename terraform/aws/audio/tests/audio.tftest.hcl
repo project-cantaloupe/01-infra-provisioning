@@ -152,3 +152,41 @@ run "security_delivery_and_workload_iam" {
     error_message = "Every audio service account must receive a separate IAM role."
   }
 }
+
+run "keda_controller_queue_read" {
+  command = plan
+
+  variables {
+    aws_account_id      = "123456789012"
+    aws_region          = "ap-northeast-2"
+    owner               = "team-audio"
+    data_class          = "user-audio"
+    web_allowed_origins = ["https://audio.example.com"]
+
+    enable_keda_controller_policy = true
+  }
+
+  override_data {
+    target = data.terraform_remote_state.compute[0]
+    values = {
+      outputs = {
+        control_plane_role_name = "cntlp-aws-control-plane-node"
+      }
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.keda_sqs_read[0]
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  assert {
+    condition = (
+      aws_iam_role_policy.keda_sqs_read[0].name == "cntlp-aws-queue-keda-read"
+      && aws_iam_role_policy.keda_sqs_read[0].role == "cntlp-aws-control-plane-node"
+    )
+    error_message = "KEDA must receive a separate policy on the control plane role."
+  }
+}

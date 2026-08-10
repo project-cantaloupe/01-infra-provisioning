@@ -244,6 +244,27 @@ resource "aws_iam_role_policy" "audio_node" {
   policy = data.aws_iam_policy_document.audio_node[0].json
 }
 
+# Self-managed Cluster의 KEDA Operator는 AWS Control Plane Node에 고정한다.
+# SQS 메시지를 소비하지 않고 ScaledObject 계산에 필요한 Queue 속성만 읽는다.
+data "aws_iam_policy_document" "keda_sqs_read" {
+  count = var.enable_keda_controller_policy ? 1 : 0
+
+  statement {
+    sid       = "ReadTranscodeQueueDepth"
+    effect    = "Allow"
+    actions   = ["sqs:GetQueueAttributes"]
+    resources = [aws_sqs_queue.audio["transcode"].arn]
+  }
+}
+
+resource "aws_iam_role_policy" "keda_sqs_read" {
+  count = var.enable_keda_controller_policy ? 1 : 0
+
+  name   = "${local.name_prefix}-queue-keda-read"
+  role   = data.terraform_remote_state.compute[0].outputs.control_plane_role_name
+  policy = data.aws_iam_policy_document.keda_sqs_read[0].json
+}
+
 # CloudWatch Exporter는 AWS service Worker에서 실행하고 EC2 Instance Profile의
 # 단기 자격증명을 사용한다. S3 객체나 로그를 읽지 않고 CloudWatch metric과
 # metric만 조회한다.
