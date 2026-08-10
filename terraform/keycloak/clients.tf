@@ -231,3 +231,61 @@ resource "keycloak_openid_client_default_scopes" "harbor" {
     keycloak_openid_client_scope.groups.name,
   ]
 }
+
+# ── Vault — 네 번째 소비자 ─────────────────────────────────────
+#
+# **이 클라이언트가 `CONSTRAINTS.md` 의 한 줄을 닫는다.** Vault UI 의
+# `userpass` 는 Keycloak 이 서기 전까지의 임시 창구였고, 그 삭제가 완료
+# 조건으로 적혀 있다 → decisions/20260731_vault-placement.md
+#
+# Grafana·Harbor 와 같은 이유로 confidential 이다 — Vault 서버가 인가
+# 코드를 교환한다.
+#
+# ⚠️ **리다이렉트가 둘인데 성격이 다르다.**
+#
+#   /ui/vault/auth/oidc/oidc/callback   브라우저 UI
+#   http://localhost:8250/oidc/callback CLI (`vault login -method=oidc`)
+#
+# CLI 쪽은 **평문 http 이고 localhost 다.** 이상해 보이지만 맞다 —
+# `vault login` 이 자기 기기에 임시 리스너를 띄우고 브라우저가 거기로
+# 돌아온다. 그 트래픽은 기기 밖으로 나가지 않는다. 빼면 CLI 로그인이
+# `invalid redirect_uri` 로 막히고, UI 만 되는 상태가 된다.
+resource "keycloak_openid_client" "vault" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "vault"
+  name      = "Vault"
+  enabled   = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  valid_redirect_uris = [
+    "https://cntlp-aws-vault-01.tail270b85.ts.net:8200/ui/vault/auth/oidc/oidc/callback",
+    "http://localhost:8250/oidc/callback",
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://cntlp-aws-vault-01.tail270b85.ts.net:8200/ui/",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "vault" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.vault.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}

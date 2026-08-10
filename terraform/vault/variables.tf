@@ -36,3 +36,20 @@ variable "audit_log_path" {
   type        = string
   default     = "/var/log/vault/audit.log"
 }
+
+# ── Keycloak OIDC 전환 (oidc.tf) ───────────────────────────────
+
+variable "keycloak_issuer" {
+  description = <<-EOT
+    realm 발행자 URL. terraform/keycloak 의 issuer_url 출력과 같아야 한다.
+    **한 번 정하면 바꾸기 비싸다** — 모든 클라이언트 설정에 박힌다.
+  EOT
+  type        = string
+  default     = "https://auth.echoprism.cloud/realms/cantaloupe"
+}
+
+variable "aws_region" {
+  description = "OIDC 클라이언트 시크릿이 사는 Secrets Manager 리전"
+  type        = string
+  default     = "ap-northeast-2"
+}
