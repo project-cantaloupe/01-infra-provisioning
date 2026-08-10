@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 워크스테이션에 terraform · ansible · kubectl 을 깐다.
+# 워크스테이션에 terraform · ansible · kubectl · aws · vault 를 깐다.
 #
 # 여기서 "워크스테이션"은 사람이 명령을 치는 PC 다.
 # Proxmox 호스트도 워커 VM 도 아니다 —
@@ -15,6 +15,8 @@
 #   ./scripts/bootstrap-workstation.sh --k8s-minor v1.33
 #   ./scripts/bootstrap-workstation.sh --dry-run
 #   ./scripts/bootstrap-workstation.sh --skip-kubectl
+#   ./scripts/bootstrap-workstation.sh --skip-aws --skip-vault
+#   ./scripts/bootstrap-workstation.sh --skip-cloud-inventory
 
 set -euo pipefail
 
@@ -22,20 +24,35 @@ set -euo pipefail
 
 readonly REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# backend.tf 의 use_lockfile 이 요구하는 최소 버전.
-readonly TERRAFORM_MIN_VERSION="1.10"
+# terraform/aws/*/versions.tf 가 ">= 1.11.0, < 2.0.0" 을 요구한다.
+# 하한을 낮게 두면 1.10 이 "충족" 으로 통과하고, 그 뒤 terraform init 이
+# AWS 스택에서 거부한다 — 설치 단계에서 걸러야 할 것을 apply 직전에 만난다.
+# (1.10 은 backend 의 use_lockfile 하한이었다. onp·gcp 는 아직 그 값이지만
+#  워크스테이션은 가장 높은 요구치를 만족해야 한다)
+readonly TERRAFORM_MIN_VERSION="1.11.0"
 
 # 클러스터 K8s 버전의 단일 출처는 ansible 롤이다. 여기 다시 적지 않는다 —
 # 워커의 kubelet 과 이 PC 의 kubectl 이 다른 마이너면 kubectl 이 클러스터에
 # 안 붙는다. 두 곳에 적어두면 한쪽만 올리게 된다.
 # 덮어쓰려면 --k8s-minor 를 쓴다.
-readonly K8S_DEFAULTS="${REPO_DIR}/ansible/roles/kubeadm-worker/defaults/main.yml"
-K8S_MINOR="$(sed -nE 's/^kubernetes_minor: *"([^"]+)".*/\1/p' "$K8S_DEFAULTS" 2>/dev/null || true)"
+# 출처는 ansible/vars/cluster.yml 의 kubernetes_minor_version 이다.
+# 한때 kubeadm-worker/defaults/main.yml 의 kubernetes_minor 였고, 클러스터 구성이
+# 합쳐질 때 옮겨졌는데 이 스크립트는 옛 경로를 계속 읽어 **빈 값**을 받고 있었다.
+# install_kubectl 의 가드가 die 로 잡아주므로 조용히 깨지지는 않았지만,
+# 에러 메시지가 "--k8s-minor 를 직접 줘라" 로 나와서 진짜 원인(경로가 옮겨졌다)을
+# 가린다. SKIP_KUBECTL=1 이 기본이라 아직 아무도 만나지 않았다.
+readonly K8S_DEFAULTS="${REPO_DIR}/ansible/vars/cluster.yml"
+K8S_MINOR="$(sed -nE 's/^kubernetes_minor_version: *"?([^"[:space:]]+)"?.*/\1/p' "$K8S_DEFAULTS" 2>/dev/null || true)"
 
 SKIP_TERRAFORM=0
 SKIP_ANSIBLE=0
 SKIP_KUBECTL=1
-WITH_CLOUD_INVENTORY=0
+SKIP_AWS=0
+SKIP_VAULT=0
+# AWS 스택(terraform/aws/*)과 동적 인벤토리(inventories/aws/aws_ec2.yaml)가
+# 실재하므로 기본으로 켠다. 이게 없으면 인벤토리가 amazon.aws 플러그인을 못 찾고,
+# ansible.cfg 의 unparsed_is_failed 가 그걸 에러로 만든다.
+WITH_CLOUD_INVENTORY=1
 DRY_RUN=0
 
 # ── 출력 ────────────────────────────────────────────────────────
@@ -97,7 +114,11 @@ install_keyring() {
   # shellcheck disable=SC2064
   trap "rm -f '$tmp'" RETURN
 
-  curl -fsSL "$url" -o "$tmp" || die "${label} GPG 키를 받지 못했다: ${url}"
+  # --retry 를 붙인다. 이 keyring 이 0바이트로 남은 실제 사고의 원인이
+  # 일시적 TLS 실패였다 (WSL2 에서 흔하다). 한 번 튕기면 저장소는 등록되고
+  # 키는 없는 상태가 되어 이후 모든 apt-get update 가 깨진다.
+  curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused "$url" -o "$tmp" \
+    || die "${label} GPG 키를 받지 못했다: ${url}"
   [[ -s "$tmp" ]] || die "${label} GPG 키가 비어 있다: ${url}"
 
   sudo gpg --batch --yes --dearmor -o "$dest" "$tmp" || die "${label} GPG 키 변환 실패"
@@ -119,7 +140,10 @@ while (( $# )); do
     --skip-terraform)     SKIP_TERRAFORM=1; shift ;;
     --skip-ansible)       SKIP_ANSIBLE=1; shift ;;
     --skip-kubectl)       SKIP_KUBECTL=1; shift ;;
+    --skip-aws)           SKIP_AWS=1; shift ;;
+    --skip-vault)         SKIP_VAULT=1; shift ;;
     --with-cloud-inventory) WITH_CLOUD_INVENTORY=1; shift ;;
+    --skip-cloud-inventory) WITH_CLOUD_INVENTORY=0; shift ;;
     --dry-run)            DRY_RUN=1; shift ;;
     -h|--help)            usage ;;
     *)                    die "모르는 인자: $1  (--help 를 본다)" ;;
@@ -174,6 +198,64 @@ if (( ! DRY_RUN )); then
   fi
 fi
 
+# ── 깨진 apt keyring 을 먼저 잡는다 ─────────────────────────────
+#
+# **저장소 등록과 keyring 은 따로 깨진다.** 키를 받다 실패하면 목적지에
+# 0바이트 파일이 남거나 아예 없는데 sources.list.d 의 항목은 그대로 살아서,
+# 그 뒤 **모든** apt-get update 가 NO_PUBKEY 로 경고하거나 실패한다.
+#
+# 이 스크립트가 실제로 그 상태를 만들었다. kubernetes keyring 이 0바이트로
+# 남았고(2026-07-28, 일시적 TLS 실패), 그것을 고치는 install_keyring 은
+# install_kubectl 안에만 있어서 SKIP_KUBECTL=1 기본값 때문에 호출되지 않았다 —
+# **고치는 코드가 기본값으로 꺼져 있었다.** 그래서 판정을 여기, 모든 설치보다
+# 앞으로 옮긴다.
+#
+# 자동으로 지우지 않는다. sources.list.d 항목을 지우는 것은 이 스크립트가 깔지
+# 않은 것까지 건드릴 수 있고, 무엇을 원하는지(도구를 깔 것인지 저장소를 뺄
+# 것인지)는 사람이 정할 일이다.
+check_apt_keyrings() {
+  step "apt keyring 무결성"
+
+  local broken=() list keyring
+  for list in /etc/apt/sources.list.d/*.list; do
+    [[ -e "$list" ]] || continue
+
+    # signed-by=<경로> 를 뽑는다. 한 파일에 여러 줄이 있을 수 있다.
+    while read -r keyring; do
+      [[ -n "$keyring" ]] || continue
+      if [[ ! -e "$keyring" ]]; then
+        warn "$(basename "$list") → 없는 keyring: ${keyring}"
+        broken+=("$list")
+      elif [[ ! -s "$keyring" ]]; then
+        warn "$(basename "$list") → 0바이트 keyring: ${keyring}"
+        broken+=("$list")
+      fi
+    done < <(sed -nE 's/.*signed-by=([^] ]+).*/\1/p' "$list")
+  done
+
+  if (( ${#broken[@]} )); then
+    die "깨진 apt keyring 이 있다. 이 상태로는 apt-get update 가 서명을 검증하지
+       못한다. 저장소를 빼거나 키를 다시 받아야 한다.
+
+       그 도구를 아직 안 쓴다면 저장소를 뺀다. 예를 들어 kubernetes 는
+       AWS 컨트롤플레인이 서야 쓸 수 있으므로(SKIP_KUBECTL 기본값 1) 지금은
+       빼는 쪽이 맞다.
+         sudo rm -f /etc/apt/sources.list.d/kubernetes.list \\
+                    /etc/apt/keyrings/kubernetes-apt-keyring.asc
+         sudo apt-get update
+
+       지금 쓴다면 0바이트 keyring 만 지우고 그 도구의 설치를 다시 돌린다.
+       install_keyring 이 0바이트를 감지해 다시 받는다 — 단 해당 도구의
+       설치 함수가 실행될 때만 그 경로가 돈다.
+
+       깨진 목록: ${broken[*]}"
+  fi
+
+  ok "sources.list.d 의 keyring 이 모두 정상"
+}
+
+check_apt_keyrings
+
 APT_UPDATED=0
 apt_update_once() {
   (( APT_UPDATED )) && return 0
@@ -196,16 +278,25 @@ install_terraform() {
     current="$(first_line terraform version)"
     current="${current#Terraform v}"
 
-    # 설치돼 있어도 1.10 미만이면 use_lockfile 이 안 먹는다.
+    # 설치돼 있어도 하한 미만이면 AWS 스택이 init 을 거부한다.
     # first_line 을 쓰는 이유는 위 주석과 같다 — head 를 파이프로 붙이지 않는다.
     if [[ "$(first_line sort -V <<< "$TERRAFORM_MIN_VERSION"$'\n'"$current")" \
           == "$TERRAFORM_MIN_VERSION" ]]; then
       skip "이미 설치됨 — v${current} (>= ${TERRAFORM_MIN_VERSION})"
       return 0
     fi
-    warn "v${current} 은 ${TERRAFORM_MIN_VERSION} 미만이다. backend.tf 의 use_lockfile 이 안 먹는다. 업그레이드한다."
+    warn "v${current} 은 ${TERRAFORM_MIN_VERSION} 미만이다. terraform/aws/* 가 init 을 거부한다. 업그레이드한다."
   fi
 
+  ensure_hashicorp_repo
+
+  apt_install terraform
+  ok "terraform 설치 완료"
+}
+
+# terraform 과 vault 가 같은 apt 저장소에서 온다. 등록을 두 곳에 복사해두면
+# 한쪽만 고치게 되므로 함수로 뽑는다. 두 단계 모두 멱등이라 여러 번 불러도 된다.
+ensure_hashicorp_repo() {
   apt_install gnupg software-properties-common curl
 
   local keyring=/usr/share/keyrings/hashicorp-archive-keyring.gpg
@@ -220,9 +311,6 @@ https://apt.releases.hashicorp.com ${DISTRO_CODENAME} main' | sudo tee '$list' >
     APT_UPDATED=0   # 저장소가 늘었으니 다시 받는다
     ok "저장소 등록"
   fi
-
-  apt_install terraform
-  ok "terraform 설치 완료"
 }
 
 # ── ansible ─────────────────────────────────────────────────────
@@ -269,21 +357,120 @@ install_ansible() {
 
   if (( WITH_CLOUD_INVENTORY )); then
     step "ansible — AWS·GCP 인벤토리 의존성"
-    apt_install python3-boto3 python3-requests-oauthlib
+    # **google.cloud 컬렉션만으로는 GCP 인벤토리가 안 돈다.** 그 플러그인은
+    # google-auth 와 requests 를 시스템 파이썬에서 import 한다. 없으면 이렇게
+    # 죽는데, 에러 문구가 자격증명 문제처럼 읽혀 엉뚱한 데를 판다:
+    #
+    #   required library is installed, but Ansible is using the wrong
+    #   Python interpreter, please consult the documentation on
+    #   ansible_python_interpreter
+    #
+    # 실제로는 인터프리터가 틀린 게 아니라 **그 인터프리터에 라이브러리가
+    # 없는 것**이다. AWS 쪽(boto3)은 깔면서 GCP 쪽만 빠져 있었다 (2026-08-05).
+    apt_install python3-boto3 python3-requests-oauthlib \
+                python3-google-auth python3-requests
     if (( DRY_RUN )); then
       printf '%s  would run: ansible-galaxy collection install amazon.aws google.cloud%s\n' "$C_DIM" "$C_OFF"
     else
       ansible-galaxy collection install amazon.aws google.cloud
     fi
     ok "클라우드 인벤토리 의존성 설치 완료"
+
+    # proxmoxer 와 같은 이유로 import 를 직접 확인한다. 컬렉션이 있어도
+    # 라이브러리가 없으면 인벤토리 파싱 단계에서 죽는다.
+    if (( ! DRY_RUN )) && ! python3 -c 'import google.auth' 2>/dev/null; then
+      warn "google.auth 를 import 하지 못한다. GCP 인벤토리가 파싱 단계에서 죽는다."
+    fi
   fi
+}
+
+# ── aws CLI ─────────────────────────────────────────────────────
+#
+# apt 의 awscli 를 쓰지 않는다. Ubuntu 24.04 의 것은 v1 이고 SSO 로그인과
+# ec2-instance-connect open-tunnel 서브커맨드가 없다. 공식 zip 이 v2 다.
+#
+# **EICE 터널이 이것 없이는 안 된다.** ansible/inventories/aws/group_vars/all.yml
+# 의 ansible_ssh_common_args 가 ProxyCommand 로 `aws ec2-instance-connect
+# open-tunnel` 을 부른다. 즉 aws CLI 가 AWS 노드로 가는 SSH 경로 자체다.
+#
+# 그리고 자격증명을 가른다. terraform 은 자격증명이 없거나 만료됐거나 권한이
+# 없을 때 전부 "no valid credential sources" 하나로 죽는데,
+# `aws sts get-caller-identity` 가 그 셋을 갈라준다.
+
+install_aws_cli() {
+  step "aws CLI"
+
+  if command -v aws >/dev/null 2>&1; then
+    local current
+    current="$(first_line aws --version)"
+    # v1 이 깔려 있으면 건너뛰지 않는다. EICE 터널이 v2 전용이다.
+    if [[ "$current" == aws-cli/2.* ]]; then
+      skip "이미 설치됨 — ${current}"
+      return 0
+    fi
+    warn "${current} 는 v1 이다. EICE 터널(ec2-instance-connect open-tunnel)이 없다. v2 로 올린다."
+  fi
+
+  local arch
+  case "$ARCH" in
+    amd64) arch=x86_64 ;;
+    arm64) arch=aarch64 ;;
+    *)     die "aws CLI 를 지원하지 않는 아키텍처: ${ARCH}" ;;
+  esac
+
+  local url="https://awscli.amazonaws.com/awscli-exe-linux-${arch}.zip"
+
+  if (( DRY_RUN )); then
+    printf '%s  would run: curl -fsSL %s | unzip && sudo ./aws/install --update%s\n' "$C_DIM" "$url" "$C_OFF"
+    return 0
+  fi
+
+  apt_install unzip curl
+
+  local tmp
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
+
+  curl -fsSL "$url" -o "$tmp/awscliv2.zip" || die "aws CLI 를 받지 못했다: ${url}"
+  [[ -s "$tmp/awscliv2.zip" ]] || die "받은 aws CLI zip 이 비어 있다: ${url}"
+  unzip -q "$tmp/awscliv2.zip" -d "$tmp" || die "aws CLI 압축을 풀지 못했다"
+  sudo "$tmp/aws/install" --update >/dev/null || die "aws CLI 설치 실패"
+
+  ok "aws CLI 설치 완료 — $(first_line aws --version)"
+}
+
+# ── vault CLI ───────────────────────────────────────────────────
+#
+# terraform 과 같은 HashiCorp 저장소에서 온다.
+#
+# 서버가 아니라 클라이언트로 쓴다. 패키지에 서비스가 같이 오지만 시작하지
+# 않는다 — Vault 서버는 EC2 에 ansible vault-server 롤이 올린다.
+#
+# 워크스테이션에 있어야 하는 이유는 두 가지다.
+#   1. scripts/cntlp-env.sh 가 SSH 개인키를 Vault 에서 당겨 ssh-agent 에 넣는다
+#   2. secret_id 발급과 시크릿 투입은 사람이 CLI 로 한다 — terraform 이 하면
+#      그 값이 tfstate 에 평문으로 남는다 (tasks/doing/006_vault-setup.md 6절)
+
+install_vault_cli() {
+  step "vault CLI"
+
+  if command -v vault >/dev/null 2>&1; then
+    skip "이미 설치됨 — $(first_line vault version)"
+    return 0
+  fi
+
+  ensure_hashicorp_repo
+
+  apt_install vault
+  ok "vault CLI 설치 완료 — $(first_line vault version)"
 }
 
 # ── kubectl ─────────────────────────────────────────────────────
 
 install_kubectl() {
   # pkgs.k8s.io 의 경로는 **마이너까지만** 받는다 (패치를 넣으면 403).
-  # 이유와 예시는 단일 출처에 적혀 있다 — $K8S_DEFAULTS 의 kubernetes_minor.
+  # 이유와 예시는 단일 출처에 적혀 있다 — $K8S_DEFAULTS 의 kubernetes_minor_version.
   # 여기서 안 막으면 apt-get update 에서야 터진다.
   if [[ ! "$K8S_MINOR" =~ ^v[0-9]+\.[0-9]+$ ]]; then
     if [[ "$K8S_MINOR" =~ ^v?([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]]; then
@@ -292,7 +479,7 @@ install_kubectl() {
       K8S_MINOR="$fixed"
     else
       die "K8s 마이너 버전을 정하지 못했다: '${K8S_MINOR}'
-       ${K8S_DEFAULTS} 의 kubernetes_minor 를 읽지 못했을 수 있다.
+       ${K8S_DEFAULTS} 의 kubernetes_minor_version 을 읽지 못했을 수 있다.
        --k8s-minor v1.36 처럼 직접 줄 수도 있다."
     fi
   fi
@@ -308,7 +495,7 @@ install_kubectl() {
 
   run sudo mkdir -p -m 755 /etc/apt/keyrings
 
-  local keyring=/etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  local keyring=/etc/apt/keyrings/kubernetes-apt-keyring.asc
   install_keyring \
     "https://pkgs.k8s.io/core:/stable:/${K8S_MINOR}/deb/Release.key" \
     "$keyring" "Kubernetes"
@@ -334,6 +521,8 @@ https://pkgs.k8s.io/core:/stable:/${K8S_MINOR}/deb/ /' | sudo tee '$list' > /dev
 (( SKIP_TERRAFORM )) || install_terraform
 (( SKIP_ANSIBLE ))   || install_ansible
 (( SKIP_KUBECTL ))   || install_kubectl
+(( SKIP_AWS ))       || install_aws_cli
+(( SKIP_VAULT ))     || install_vault_cli
 
 # ── 요약 ────────────────────────────────────────────────────────
 
@@ -346,6 +535,8 @@ check() {
       terraform) ver="$(first_line terraform version)" ;;
       ansible)   ver="$(first_line ansible --version)" ;;
       kubectl)   ver="$(first_line kubectl version --client)" ;;
+      aws)       ver="$(first_line aws --version)" ;;
+      vault)     ver="$(first_line vault version)" ;;
     esac
     printf '%s  ok%s   %-10s %s\n' "$C_OK" "$C_OFF" "$name" "$ver"
   else
@@ -356,6 +547,8 @@ check() {
 check terraform
 check ansible
 check kubectl
+check aws
+check vault
 
 cat <<'NEXT'
 

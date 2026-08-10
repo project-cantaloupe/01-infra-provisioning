@@ -92,6 +92,33 @@
     - tailscale_join | bool
     - tailscale_backend_before != 'Running'
 
+# 키와 같은 이유로 여기서 막는다. 태그가 비었거나 tailnet 에 없는 값이면
+# `tailscale up` 이 "requested tags ... are invalid or not permitted" 로 죽는데,
+# 그 출력은 no_log 에 가려서 원인이 안 보인다. 미리 형태만이라도 검사한다.
+#
+# **형태만 본다.** 그 태그가 tailnet 에 실제로 있는지는 여기서 알 수 없다 —
+# 확인하려면 Tailscale API 키가 필요하고, 그건 이 롤이 없애려는 secret-zero 를
+# 하나 늘리는 일이다. 실재 여부는 admin 콘솔의 tagOwners 로 확인한다.
+- name: 미가입 노드에 사용할 tailnet 태그 확인
+  ansible.builtin.assert:
+    that:
+      - tailscale_tags | length > 0
+      - tailscale_tags is match('^tag:[a-z0-9-]+(,tag:[a-z0-9-]+)*$')
+    fail_msg: |
+      tailscale_tags 가 비었거나 형식이 잘못됐습니다: "{{ tailscale_tags }}"
+
+      이 롤은 기본값을 두지 않습니다. 노드 종류마다 태그가 다르고,
+      틀린 태그로 가입하면 노드가 뜬 채 ACL 에 막혀 고립되기 때문입니다.
+
+      호출하는 쪽에서 지정하세요 — 지금 쓰는 값:
+        tag:cntlp-aws-cp   컨트롤플레인
+        tag:cntlp-wk       워커 (aws · gcp · onp)
+        tag:cntlp-vault    Vault
+
+      태그는 Tailscale admin → Access controls 의 tagOwners 에 있어야 하고,
+      인증 키에도 그 태그의 부여 권한이 붙어 있어야 합니다.
+  when: tailscale_backend_before != 'Running'
+
 - name: 미가입 노드를 tailnet 에 등록
   when:
     - tailscale_join | bool
@@ -106,6 +133,7 @@
         mode: "0600"
       no_log: true
 
+    # --accept-dns 는 tailscale_accept_dns 가 정한다 — defaults/main.yml 참고.
     # Host의 Tailscale HTTPS 이름은 MagicDNS로 해석한다. Pod의 Cluster DNS는
     # kubelet과 CoreDNS가 별도로 제공하므로 Host의 Split DNS와 충돌하지 않는다.
     #
@@ -118,8 +146,8 @@
               '--auth-key=file:' ~ tailscale_auth_key_path,
               '--hostname=' ~ tailscale_hostname,
               '--advertise-tags=' ~ tailscale_tags,
-              '--accept-dns=' ~ ((tailscale_accept_dns | bool)
-                                  | ternary('true', 'false')),
+              '--accept-dns=' ~ (tailscale_accept_dns | bool | lower),
+              '--accept-routes=' ~ (tailscale_accept_routes | bool | lower),
               '--timeout=2m']
              + (['--ssh'] if tailscale_ssh | bool else [])
              + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))]
@@ -134,48 +162,114 @@
         state: absent
       no_log: true
 
-# 이미 가입된 노드에는 `tailscale up`을 다시 실행하지 않는다. `tailscale set`은
-# Machine Key, 태그와 라우팅 설정을 유지한 채 DNS 수용 설정만 갱신한다.
-- name: 현재 Tailscale DNS 수용 설정 조회
+# ── 가입 뒤에도 수렴시켜야 하는 설정 ──────────────────────────
+#
+# `tailscale up` 은 미가입일 때만 돈다. 이미 Running 인 노드는 위 블록을
+# 통째로 건너뛰므로, up 의 인자로만 설정하면 **값을 바꿔도 반영되지 않는다.**
+# 플레이북은 성공하고 노드만 옛 설정으로 남는다.
+#
+# `tailscale set` 은 가입 상태와 무관하게 먹으므로 여기서 매번 맞춘다.
+#
+# **전부 `tailscale_join` 아래에 둔다.** Golden Image 빌드는 패키지만 깔고
+# tailnet 에 가입하지 않는다 (defaults/main.yml — 이미지에 machine key 가
+#들어가면 그 이미지로 만든 노드가 전부 같은 장치 신원을 공유한다). 가입하지
+# 않은 이미지에서는 `tailscale debug prefs` 가 읽을 prefs 자체가 없다.
+- name: 현재 tailnet prefs 조회
   ansible.builtin.command: tailscale debug prefs
-  register: tailscale_prefs_before
+  register: _ts_prefs
   changed_when: false
   check_mode: false
   when: tailscale_join | bool
 
-- name: Tailscale MagicDNS 수용 설정 적용
+- name: MagicDNS 설정을 맞춘다
   ansible.builtin.command:
-    argv:
-      - tailscale
-      - set
-      - >-
-        --accept-dns={{ (tailscale_accept_dns | bool)
-        | ternary('true', 'false') }}
+    cmd: tailscale set --accept-dns={{ tailscale_accept_dns | bool | lower }}
   when:
     - tailscale_join | bool
-    - >-
-      ((tailscale_prefs_before.stdout | from_json).CorpDNS | default(false) | bool)
+    - (_ts_prefs.stdout | from_json).CorpDNS | default(false) | bool
       != (tailscale_accept_dns | bool)
   changed_when: true
 
-- name: Tailscale DNS 수용 설정 검증
-  ansible.builtin.command: tailscale debug prefs
-  register: tailscale_prefs_after
-  changed_when: false
-  check_mode: false
-  when: tailscale_join | bool
+# 광고 경로도 같은 이유로 여기 있다. `up` 인자로만 두면 두 겹으로 막힌다.
+#
+#   1. 위의 `tailscale up` 블록은 미가입 노드에서만 돈다. 이미 붙은 노드는
+#      통째로 건너뛰므로 변수를 바꿔도 아무 일도 안 일어난다
+#   2. 그 `up` 에는 `--reset` 이 붙어 있다. --reset 은 인자로 주지 않은
+#      preference 를 기본값으로 되돌리므로, 손으로 광고해둔 경로가 재조인마다
+#      지워진다
+#
+# 그래서 `--advertise-routes` 는 `tailscale set` 으로 매번 수렴시킨다.
+#
+# ── 알아둘 것 둘 ────────────────────────────────────────────────
+#
+# **광고는 승인이 있어야 실제로 산다.** tailnet admin 콘솔에서 경로를 승인하거나
+# ACL 에 autoApprovers 를 걸어야 다른 노드가 이 경로를 받는다. 승인 전에는
+# `tailscale status` 에 광고만 뜨고 트래픽은 안 온다 — 실패로 안 보인다.
+#
+# **서브넷 라우터는 들어온 트래픽을 자기 IP 로 SNAT 한다**(--snat-subnet-routes
+# 기본값 true). 그래서 워크스테이션 → 파드 트래픽이 파드에는 **라우터 노드의
+# tailnet IP** 에서 온 것으로 보인다. 파드가 아니라 호스트라서 파드 셀렉터로는
+# 허용되지 않는다 — 02-k8s-manifests 의 default-deny-ingress 가 켜지면 ipBlock
+# 규칙이 따로 필요하다 → tasks/todo/002_bootstrap-blockers.md 2번
+- name: 광고 경로를 맞춘다
+  ansible.builtin.command:
+    cmd: >-
+      tailscale set
+      --advertise-routes={{ tailscale_advertise_routes | join(',') }}
+  when:
+    - tailscale_join | bool
+    - ((_ts_prefs.stdout | from_json).AdvertiseRoutes | default([], true) | sort)
+      != (tailscale_advertise_routes | sort)
+  changed_when: true
 
-- name: Tailscale DNS 수용 설정이 기대값인지 확인
-  ansible.builtin.assert:
-    that:
-      - >-
-        ((tailscale_prefs_after.stdout | from_json).CorpDNS | default(false) | bool)
-        == (tailscale_accept_dns | bool)
-    fail_msg: >-
-      Tailscale DNS 수용 설정이 기대값과 다릅니다.
-      expected={{ tailscale_accept_dns | bool }},
-      actual={{ (tailscale_prefs_after.stdout | from_json).CorpDNS | default(false) }}
-  when: tailscale_join | bool
+# 경로 수신도 같은 이유로 여기 있다. 그리고 여기 있어야 하는 이유가 하나 더 있다.
+#
+# **이 값은 여태 코드에 없었다.** "롤이 --accept-routes 를 안 넘기니 기본값으로
+# 꺼져 있을 것"이라고 주석에만 적혀 있었는데, 실측하니 컨트롤플레인과 온프렘
+# 워커가 둘 다 켜져 있었다. 손으로 켠 것을 되돌리는 코드가 없으면 드리프트가
+# 영구히 남는다 — 플레이북은 매번 성공하고 노드만 틀린 채로 있다.
+#
+# 켜져 있으면 무슨 일이 나는지는 defaults/main.yml 주석에 있다. 요지는 받은
+# 경로가 ip rule 5270 으로 들어와 Calico 의 main(32766)을 앞지른다는 것이다.
+#
+# prefs 의 키 이름이 플래그와 다르다 — `--accept-routes` 는 `RouteAll` 로 뜬다.
+- name: 경로 수신 설정을 맞춘다
+  ansible.builtin.command:
+    cmd: >-
+      tailscale set
+      --accept-routes={{ tailscale_accept_routes | bool | lower }}
+  when:
+    - tailscale_join | bool
+    - ((_ts_prefs.stdout | from_json).RouteAll | default(false, true) | bool)
+      != (tailscale_accept_routes | bool)
+  changed_when: true
+
+# Tailscale SSH 도 정확히 같은 함정이었다. `--ssh` 가 위 `tailscale up` 인자로만
+# 있어서, 이미 가입한 노드에는 `tailscale_ssh` 를 바꿔도 영원히 반영되지 않는다.
+#
+# **그래서 실물이 갈라져 있었다** (2026-08-04 실측, prefs 직접 조회):
+#
+#   RunSSH=true    cntlp-aws-cp-01 · cntlp-onp-wk-01
+#   RunSSH=false   cntlp-gcp-wk-01 · cntlp-gcp-wk-02 · cntlp-aws-wk-01
+#
+# 롤의 기본값은 `tailscale_ssh: true` 인데도 5대 중 2대만 켜져 있었다. 꺼진
+# 3대는 `--ssh` 가 없던 시절에 가입한 노드다. 그 결과가 **접근 경로가 노드마다
+# 다른 상태**였다 — GCP 2대는 아예 못 들어가고, aws-wk-01 은 접속할 때마다
+# EC2 Instance Connect 로 60초짜리 키를 밀어야 했다.
+# → tasks/todo/009_node-access-paths.md
+#
+# ACL 은 이미 허용하고 있었다. `cntlp-onp-wk-01` 이 같은 `tag:cntlp-wk` 로
+# 키 없이 접속되는 것이 그 증거다. 막고 있던 것은 노드의 이 pref 하나였다.
+- name: SSH 설정을 맞춘다
+  ansible.builtin.command:
+    cmd: >-
+      tailscale set
+      --ssh={{ tailscale_ssh | bool | lower }}
+  when:
+    - tailscale_join | bool
+    - ((_ts_prefs.stdout | from_json).RunSSH | default(false, true) | bool)
+      != (tailscale_ssh | bool)
+  changed_when: true
 
 # ── 결과 검증 ─────────────────────────────────────────────────
 
@@ -233,7 +327,7 @@
 
       Tailscale admin 콘솔에서 오프라인 디바이스 `{{ tailscale_hostname }}` 를
       지운 뒤 이 롤을 다시 돌린다. 반복될 일이면 auth key 를 ephemeral 로
-      발급한다 — docs/runbook-onp-vm-recreate.md 참고.
+      발급한다 — references/20260801_infra-07-onp-vm-recreate.md 참고.
     success_msg: "tailnet 이름 확인 — {{ tailscale_registered_name }}"
   when: tailscale_join | bool
 

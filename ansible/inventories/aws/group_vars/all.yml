@@ -3,13 +3,23 @@
 ansible_user: ubuntu
 ansible_python_interpreter: /usr/bin/python3
 
-# 환경변수를 지정하지 않으면 로컬의 기본 Ed25519 개인키를 사용한다.
-# 개인키와 인증 정보는 저장소에 넣지 않는다.
-ansible_ssh_private_key_file: >-
-  {{
-    lookup('env', 'CNTLP_SSH_PRIVATE_KEY')
-    | default(lookup('env', 'HOME') + '/.ssh/id_ed25519', true)
-  }}
+# **개인키 경로를 지정하지 않는다.** onp 가 먼저 걷어낸 것과 같은 이유다 —
+# 경위는 inventories/onp/group_vars/platform_onp.yml 주석에 있다.
+#
+# 여기 있던 값은 CNTLP_SSH_PRIVATE_KEY 가 없으면 ~/.ssh/id_ed25519 로 떨어졌는데,
+# **그 파일은 존재한 적이 없다.** 없는 경로를 지정하면 ssh 가 agent 를 아예 안
+# 보고 실패한다. 지정하지 않아야 agent 의 키가 쓰인다.
+#
+# 그리고 AWS 노드에는 애초에 맞는 키가 없다. 두 노드는 cntlp-aws-key
+# (지문 93jJ6DF2IR5MfbCkK12ze5J0zjZjE+f20SalPsaFp9w=) 로 만들어졌는데 그
+# 개인키가 로컬에도 Vault 에도 없다 → tasks/todo/009_node-access-paths.md
+#
+# **EIC 공개키를 미는 단계를 인벤토리에 넣지 않는다.** 매 접속마다 60초짜리
+# 키를 밀어야 해서 ansible 의 연결 수립과 수명이 맞지 않고, 무엇보다 그
+# 경로가 필요 없어진다 — vpn-mesh 롤이 노드의 Tailscale SSH pref 를 켜서
+# 수렴시키면 키 없이 tailnet ACL 로 들어간다
+# (roles/vpn-mesh/tasks/main.yml 「SSH 설정을 맞춘다」).
+# EIC 는 메시가 죽었을 때의 수동 break-glass 로만 남긴다.
 
 # 대상 호스트명은 인스턴스 ID이며 AWS CLI가 EICE 터널을 연다.
 # AWS_PROFILE은 Ansible 실행 셸에 export한 값을 그대로 사용한다.

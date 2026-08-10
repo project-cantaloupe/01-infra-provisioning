@@ -50,12 +50,41 @@
         update_cache: true
         cache_valid_time: 3600
 
-    # 파드 트래픽이 FORWARD 를 지난다. 이걸 놓치면 CNI 를 깔아도 파드가 서로 못 본다.
-    - name: FORWARD 기본 정책을 ACCEPT 로 바꾼다
+    # ── 기본 정책을 파일에 직접 쓴다 ────────────────────────────
+    #
+    # **`ufw default` 명령에 맡기지 않는다.** ufw 가 inactive 일 때 그 명령은
+    # 상태를 못 읽고 조용히 아무것도 안 쓰면서 성공한다. community.general.ufw
+    # 모듈도 그걸 그대로 `ok` 로 보고한다 — 바꾸지 않았는데 바꿨다고 믿게 된다.
+    #
+    # **2026-08-04 에 이것 때문에 노드 하나를 잃었다.** cntlp-onp-wk-01 의
+    # /etc/default/ufw 에 DEFAULT_*_POLICY 세 줄이 통째로 없었는데(flannel 쓰던
+    # 옛 클러스터의 잔재다), 롤은 `ok` 를 찍고 지나갔고 `ufw enable` 이 **정책이
+    # 빈 채로** 방화벽을 켰다. 빈 정책은 양방향 DROP 이다.
+    #
+    #   나가는 DERP 연결이 죽어 tailnet 에서 offline
+    #   sshd 의 SYN-ACK 이 못 나가 SSH 가 timeout
+    #   ICMP echo-reply 도 못 나가 ping 100% 손실
+    #   LOGLEVEL 도 같은 파일이라 [UFW BLOCK] 로그가 0건 — 진단 단서까지 사라졌다
+    #
+    # 노드는 살아 있는데 완전히 어두워진다. Proxmox 콘솔로만 복구된다.
+    # → findings/20260805_ufw-enable-blackout.md
+    #
+    # FORWARD 가 ACCEPT 여야 하는 이유는 따로다 — 파드 트래픽이 노드를 FORWARD 로
+    # 지난다. DROP 이면 CNI 를 깔아도 파드끼리 안 통한다.
+    - name: 기본 정책과 로그 수준을 파일에 박는다
       ansible.builtin.lineinfile:
         path: /etc/default/ufw
-        regexp: '^DEFAULT_FORWARD_POLICY='
-        line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+        regexp: "^{{ item.key }}="
+        line: '{{ item.key }}="{{ item.value }}"'
+        create: false
+      loop:
+        - { key: DEFAULT_INPUT_POLICY, value: DROP }
+        - { key: DEFAULT_OUTPUT_POLICY, value: ACCEPT }
+        - { key: DEFAULT_FORWARD_POLICY, value: ACCEPT }
+        # 로깅이 꺼져 있으면 막혔을 때 무엇이 막혔는지 알 방법이 없다.
+        - { key: LOGLEVEL, value: low }
+      loop_control:
+        label: "{{ item.key }}={{ item.value }}"
       notify: reload ufw
 
     # ── 여기부터 규칙. enable 은 맨 마지막이다 ──────────────────
@@ -105,7 +134,7 @@
         port: "22"
         proto: tcp
         src: "{{ item }}"
-      loop: "{{ security_ssh_allow_from }}"
+      loop: "{{ security_ssh_allow_from + security_ssh_allow_from_extra }}"
 
     # Tailscale 이 직접 연결(P2P)을 맺을 때 쓰는 포트.
     # 막히면 조용히 DERP 릴레이로 폴백해서 "되긴 되는데 느린" 상태가 된다.
@@ -123,20 +152,132 @@
         interface: "{{ security_mesh_interface }}"
         direction: in
 
-    - name: 나가는 것은 허용한다
-      community.general.ufw:
-        default: allow
-        direction: outgoing
+    # 기본 정책은 위에서 파일에 직접 박았다. `ufw default` 는 쓰지 않는다 —
+    # 이유는 그 태스크 주석에 있다.
 
-    - name: 들어오는 것은 기본 차단한다
-      community.general.ufw:
-        default: deny
-        direction: incoming
+    # ── ufw 고아 체인 복구 ─────────────────────────────────────
+    #
+    # **ufw 는 primary 체인이 이미 있으면 점프를 붙이지 않는다.**
+    # /lib/ufw/ufw-init-functions 의 구조가 이렇다.
+    #
+    #   if iptables -L ufw-before-logging-input -n >/dev/null 2>&1 ; then
+    #       delete_chains          # 비우기만 한다. 주석에 primary 는 일부러 남긴다고 적혀 있다
+    #   else
+    #       ...  -A INPUT -j ufw-before-input ...    # 점프는 여기서만 생긴다
+    #   fi
+    #
+    # 「체인이 있으면 점프도 있다」를 전제로 한다. **그 전제가 깨질 수 있다** —
+    # `iptables -F INPUT` 은 INPUT 의 규칙만 지우고 사용자 체인은 남긴다.
+    # 클러스터를 걷어내거나 CNI 를 갈아끼우면 그렇게 된다.
+    #
+    # 그 상태로 `ufw enable` 하면 **정책만 DROP 이 되고 허용 규칙은 연결되지
+    # 않는다.** ufw 는 "Firewall is active" 라고 성공을 보고하고, 체인과 규칙도
+    # 다 만들어지고, `ufw status` 도 active 로 뜬다. 그런데 INPUT 에는 점프가
+    # 없어서 모든 것이 policy DROP 으로 사라진다. **로깅 체인도 연결되지 않아
+    # [UFW BLOCK] 기록조차 남지 않는다.**
+    #
+    # 2026-08-05 에 cntlp-onp-wk-01 이 이 상태였다. flannel 쓰던 옛 클러스터의
+    # 잔재였고, 다섯 노드 중 이 하나만 그랬다.
+    # → findings/20260805_ufw-enable-blackout.md
+    - name: ufw 체인과 INPUT 점프의 짝이 맞는지 본다
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "chain: $(iptables -L ufw-before-logging-input -n >/dev/null 2>&1 && echo 1 || echo 0)"
+        echo "jump: $(iptables -S INPUT 2>/dev/null | grep -c 'j ufw-before-input' || true)"
+      args:
+        executable: /bin/bash
+      register: _ufw_wiring
+      changed_when: false
+      check_mode: false
 
-    # 규칙이 전부 들어간 뒤에야 켠다.
+    - name: 고아 상태인지 판정한다
+      ansible.builtin.set_fact:
+        _ufw_orphaned: >-
+          {{ (_ufw_wiring.stdout | from_yaml).chain | int == 1
+             and (_ufw_wiring.stdout | from_yaml).jump | int == 0 }}
+
+    # 체인을 지우면 다음 enable 이 else 분기를 타서 점프를 새로 붙인다.
+    # 점프가 없으므로 참조하는 것이 없어 삭제가 그냥 된다.
+    - name: 고아 체인을 지워 ufw 가 다시 붙이게 한다
+      ansible.builtin.shell: |
+        set -o pipefail
+        for t in iptables ip6tables; do
+          for c in $($t -S 2>/dev/null | awk '/^-N ufw6?-/ {print $2}'); do
+            $t -F "$c" 2>/dev/null || true
+            $t -X "$c" 2>/dev/null || true
+          done
+        done
+      args:
+        executable: /bin/bash
+      when: _ufw_orphaned | bool
+      changed_when: true
+
+    # ── 켜기 직전 마지막 관문 ──────────────────────────────────
+    #
+    # **정책이 비어 있으면 여기서 멈춘다.** 위 lineinfile 이 성공했어도 파일을
+    # 다시 읽어 확인한다. 켠 뒤에 틀린 것을 알면 노드가 어두워진 다음이고,
+    # 그때는 콘솔로만 들어갈 수 있다.
+    - name: 기본 정책이 실제로 파일에 있는지 다시 읽는다
+      ansible.builtin.slurp:
+        src: /etc/default/ufw
+      register: _ufw_defaults
+      check_mode: false
+
+    - name: 정책이 비어 있으면 켜지 않는다
+      ansible.builtin.assert:
+        that:
+          - _ufw_defaults.content | b64decode is search('^DEFAULT_INPUT_POLICY="DROP"', multiline=True)
+          - _ufw_defaults.content | b64decode is search('^DEFAULT_OUTPUT_POLICY="ACCEPT"', multiline=True)
+          - _ufw_defaults.content | b64decode is search('^DEFAULT_FORWARD_POLICY="ACCEPT"', multiline=True)
+        fail_msg: |
+          /etc/default/ufw 의 기본 정책이 기대와 다르다. **방화벽을 켜지 않는다.**
+
+          정책이 비면 ufw 가 양방향 DROP 으로 켜지고 노드가 통째로 어두워진다.
+          나가는 연결까지 막혀 tailnet 에서도 떨어지므로 콘솔로만 복구된다.
+
+          현재 파일:
+          {{ _ufw_defaults.content | b64decode }}
+
+          **--check 에서 이 실패가 뜨는 것은 정상일 수 있다.** check 모드는
+          앞의 lineinfile 이 파일을 실제로 고치지 않으므로, 아직 수렴하지 않은
+          노드에서는 여기서 걸린다. 실제 실행에서는 lineinfile 이 먼저 세 줄을
+          넣고 이 검사를 통과한다. **그래도 무시하지 말고 파일을 직접 본다** —
+          손으로 망가뜨린 노드는 lineinfile 이 고칠 수 있지만, ufw 가 파일을
+          다시 쓰는 다른 경로가 있으면 실제 실행에서도 같은 자리에서 걸린다.
+        success_msg: 기본 정책 확인 — INPUT=DROP · OUTPUT=ACCEPT · FORWARD=ACCEPT
+
+    # 규칙이 전부 들어가고 정책까지 확인된 뒤에야 켠다.
     - name: ufw 를 켠다
       community.general.ufw:
         state: enabled
+
+    # **켰다고 연결된 것이 아니다.** 위 고아 체인 문제가 정확히 그 형태였다.
+    # `ufw status` 도 active 고 규칙도 다 들어갔는데 INPUT 에 점프가 없었다.
+    # 여기까지 왔는데 점프가 없으면 노드는 이미 어두워졌고 이 태스크는 돌지도
+    # 못한다(연결이 끊겨 UNREACHABLE 이 된다). 그래도 남긴다 — 연결이 살아남는
+    # 조합에서는 이게 유일한 경보다.
+    - name: 점프가 실제로 붙었는지 확인한다
+      ansible.builtin.command: iptables -S INPUT
+      register: _ufw_input_after
+      changed_when: false
+      check_mode: false
+
+    - name: 점프가 없으면 실패로 알린다
+      ansible.builtin.assert:
+        that:
+          - _ufw_input_after.stdout is search('-j ufw-before-input')
+          - _ufw_input_after.stdout is search('-j ufw-after-input')
+        fail_msg: |
+          ufw 는 켜졌는데 INPUT 에 점프가 붙지 않았다. **이 노드는 지금
+          policy DROP 만 걸린 상태이고 허용 규칙이 경로에 없다.**
+
+          즉시 되돌린다:  sudo ufw disable
+
+          원인은 대개 고아 primary 체인이다. 위 「고아 체인을 지워…」 태스크가
+          잡았어야 하는데 놓쳤다는 뜻이므로 판정 로직을 다시 본다.
+          → findings/20260805_ufw-enable-blackout.md
+        success_msg: INPUT 점프 확인 — ufw 규칙이 경로에 연결됐다
+      when: not ansible_check_mode
 
     - name: 변경된 UFW 설정을 즉시 반영한다
       ansible.builtin.meta: flush_handlers
@@ -187,3 +328,67 @@
     - name: 방화벽 규칙을 보여준다
       ansible.builtin.debug:
         var: _ufw.stdout_lines
+
+# ── 루프 가드 두 번째 층 — ip rule ──────────────────────────────
+#
+# **`security_enable_firewall` 블록 바깥이다. 일부러 그렇다.**
+# 이 층의 존재 이유가 "ufw 와 무관하게 산다" 이므로, ufw 를 끈 노드에서도
+# 서야 한다. 안에 넣으면 층 1 과 같은 실패 모드를 공유해 의미가 없어진다.
+#
+# 이 유닛은 2026-08-05 까지 `cntlp-gcp-wk-01` 한 대에만 손으로 만들어져
+# 있었고 코드에도 문서에도 없었다. 잘 작동하고 있어서 아무 경보도 울리지
+# 않았다 — 그래서 「설명되지 않는 정상」이 가장 오래 숨는다.
+# → findings/20260806_loop-guard-two-layers.md
+- name: Tailscale-Calico ip rule 가드 유닛을 놓는다
+  ansible.builtin.template:
+    src: cntlp-tailscale-calico-guard.service.j2
+    dest: /etc/systemd/system/cntlp-tailscale-calico-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: security_tailscale_calico_loop_guard | bool
+  notify: restart loop guard rule
+
+- name: ip rule 가드를 켜고 부팅에도 걸어둔다
+  ansible.builtin.systemd_service:
+    name: cntlp-tailscale-calico-guard.service
+    daemon_reload: true
+    enabled: true
+    state: started
+  when: security_tailscale_calico_loop_guard | bool
+
+- name: 템플릿이 바뀌었으면 지금 반영한다
+  ansible.builtin.meta: flush_handlers
+
+# **유닛이 active 라는 것은 규칙이 있다는 뜻이 아니다.** `Type=oneshot` +
+# `RemainAfterExit=yes` 는 ExecStart 가 한 번 성공했다는 기록일 뿐이라,
+# 그 뒤에 누가 `ip rule del` 을 해도 유닛은 계속 active 로 뜬다.
+# ufw 가 active 인데 INPUT 점프가 없던 것과 정확히 같은 부류다 —
+# **도구의 자기 보고 대신 커널을 읽는다.**
+- name: ip rule 가드가 실제로 커널에 올라왔는지 확인한다
+  ansible.builtin.command: ip rule
+  register: _ip_rule_after
+  changed_when: false
+  check_mode: false
+  when: security_tailscale_calico_loop_guard | bool
+
+- name: ip rule 가드가 없으면 실패로 알린다
+  ansible.builtin.assert:
+    that:
+      - _ip_rule_after.stdout is search('^' ~ security_loop_guard_rule_pref ~ ':.*'
+          ~ (security_calico_pod_cidr | trim | regex_escape) ~ '.*unreachable',
+          multiline=True)
+    fail_msg: |
+      ip rule 가드가 커널에 없다. 유닛은 켜졌는데 규칙이 안 붙은 것이다.
+
+      확인:  ip rule | grep {{ security_loop_guard_rule_pref }}
+             systemctl status cntlp-tailscale-calico-guard.service
+
+      이 노드는 지금 루프 가드가 **층 1(ufw)만** 남은 상태다. ufw 가 꺼지면
+      가드가 통째로 사라진다.
+    success_msg: >-
+      ip rule {{ security_loop_guard_rule_pref }} 확인 —
+      tailscaled 패킷의 {{ security_calico_pod_cidr }} 경로가 끊겨 있다
+  when:
+    - security_tailscale_calico_loop_guard | bool
+    - not ansible_check_mode

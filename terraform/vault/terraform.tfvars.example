@@ -1,0 +1,17 @@
+# 복사해서 terraform.tfvars 로 쓴다. tfvars 는 .gitignore 가 막는다.
+#
+# **이 스택에는 시크릿 입력이 없다.** 비밀번호도 secret_id 도 시크릿 값도
+# terraform 이 만들지 않는다 — 만들면 tfstate 에 평문으로 남는다.
+# 주소와 토큰은 환경변수로 온다 (VAULT_ADDR / VAULT_TOKEN).
+
+# userpass 계정 이름. Keycloak OIDC 로 갈아탈 때 이 창구는 지운다.
+human_username = "pneuma"
+
+# 사람 토큰 수명(시간). scripts/cntlp-env.sh 의 `ssh-add -t` 와 같아야 한다.
+token_ttl_hours = 8
+
+# AppRole 토큰 수명(초). terraform apply 또는 ansible 실행 한 번 분량.
+approle_token_ttl_seconds = 3600
+
+# 감사 로그 경로. vault-server 롤의 logrotate 설정과 같아야 한다.
+audit_log_path = "/var/log/vault/audit.log"

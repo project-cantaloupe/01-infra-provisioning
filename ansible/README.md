@@ -62,7 +62,7 @@ AWS 동적 인벤토리는 실행 중인 EC2 중 다음 태그가 있는 Kuberne
 `ansible-core 2.19`의 컨트롤 노드는 Python 3.11~3.13이 필요하다.
 
 ```bash
-cd /Users/kh/Github/cantaloupe/01-infra-provisioning/ansible
+cd <리포 루트>/ansible
 
 python3.13 -m venv .venv
 source .venv/bin/activate
@@ -73,24 +73,37 @@ ansible-galaxy collection install -r requirements.yml -p .collections
 
 ## 실행 전 환경변수
 
-```bash
-cd /Users/kh/Github/cantaloupe/01-infra-provisioning/ansible
-source .venv/bin/activate
-
-export AWS_PROFILE=cntlp
-export CNTLP_SSH_PRIVATE_KEY="$HOME/.ssh/id_ed25519"
-```
-
-이미 모든 노드가 올바른 tailnet에 가입했다면 인증 키는 필요 없다. 새 노드를
-처음 가입시킬 때만 재사용 가능하고 사전 승인된 Tailscale auth key를 셸
-환경변수로 전달한다.
+**손으로 export 하지 않는다.** `scripts/cntlp-env.sh` 가 전부 세운다 —
+Vault 에서 값을 읽어야 하므로 먼저 로그인한다.
 
 ```bash
-export CNTLP_TAILSCALE_AUTH_KEY='Tailscale에서 발급받은 키'
+cd <리포 루트>
+source ansible/.venv/bin/activate
+
+export VAULT_ADDR=https://cntlp-aws-vault-01.<tailnet>.ts.net:8200
+vault login -method=userpass username=<이름>      # 토큰 TTL 8h
+
+source scripts/cntlp-env.sh
+echo "rc=$?"        # 0 이어야 한다
 ```
 
-키는 Ansible 변수 파일, Terraform 변수, Git에 저장하지 않는다. 실행 후에는
-`unset CNTLP_TAILSCALE_AUTH_KEY`로 현재 셸에서도 제거한다.
+이게 세우는 것 — Proxmox 접속 4종(Vault 의 `secret/onp/proxmox`),
+SSH 개인키(`secret/ssh/cntlp-private` → ssh-agent 메모리, 8h),
+AWS 자격증명, `ANSIBLE_CONFIG`.
+
+> **`rc` 를 확인한다.** Vault 단계가 실패하면 `PROXMOX_*` 를 지우고 1 을 낸다.
+> 무시하고 진행하면 온프렘 인벤토리가 **에러 없이 호스트 0개**로 성공한다.
+> AWS 자격증명과 `ANSIBLE_CONFIG` 은 그 경우에도 세워져 있다 — AWS 작업은
+> Vault 없이도 되어야 하기 때문이다.
+
+**Tailscale auth key 를 손으로 넘기지 않는다.** 온프렘은 group_vars 가 Vault 의
+`secret/onp/tailscale` 에서 읽고, 이미 가입된 노드는 그 조회조차 하지 않는다
+(jinja 지연 평가). 새 영역을 처음 세울 때만 예외적으로 환경변수를 쓴다 —
+그 시점에는 Vault 가 아직 없다 → `references/20260801_infra-02-build-order.md` 3-2절
+
+**개인키 경로도 지정하지 않는다.** `ansible_ssh_private_key_file` 은
+group_vars 에서 지웠다. ssh-agent 를 쓴다 — Vault 에서 당겨 파일로 쓰면
+원본이 있는 상태에서 평문 사본이 하나 는다.
 
 ## AWS 노드 자동 실행
 
@@ -108,6 +121,10 @@ ansible-playbook -i inventories/aws/aws_ec2.yaml \
 
 unset CNTLP_TAILSCALE_AUTH_KEY
 ```
+
+`ansible-inventory --graph` 를 먼저 보는 것이 습관이어야 한다.
+**그룹이 비어 있어도 플레이북은 실패하지 않는다** — `0 hosts matched` 는
+성공으로 끝난다. 이 리포가 반복해 밟은 함정이다.
 
 `site-cluster.yaml`의 실행 순서는 다음과 같다.
 

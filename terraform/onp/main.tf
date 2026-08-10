@@ -42,7 +42,7 @@ resource "proxmox_virtual_environment_file" "cloud_config" {
     data = templatefile("${path.module}/cloud-init/worker.yaml.tftpl", {
       hostname        = local.worker_names[count.index]
       username        = var.vm_username
-      ssh_public_keys = var.ssh_public_keys
+      ssh_public_keys = local.ssh_public_keys
     })
   }
 }

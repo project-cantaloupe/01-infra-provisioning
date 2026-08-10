@@ -1,0 +1,62 @@
+# {{ ansible_managed }}
+#
+# 손으로 고치지 않는다. ansible/roles/vault-server/templates/vault.hcl.j2 를 고친다.
+
+ui = true
+
+# ── 스토리지 ────────────────────────────────────────────────────
+#
+# integrated raft, **단일 노드**다.
+#
+# 3노드 HA 도 되지만 비용이 3배고, 이 프로젝트에서 Vault 장애는 "작업이
+# 멈춘다" 이지 "서비스가 죽는다" 가 아니다 — 오디오 앱 런타임 경로에 Vault 가
+# 없다. 복구는 S3 스냅샷으로 한다.
+# → tasks/doing/006_vault-setup.md 1절
+storage "raft" {
+  path    = "{{ vault_data_dir }}"
+  node_id = "{{ vault_raft_node_id }}"
+}
+
+# ── auto-unseal ─────────────────────────────────────────────────
+#
+# 이 블록이 없으면 Vault 는 shamir seal 로 서고 재부팅마다 사람이 recovery key
+# 조각을 넣어야 한다. EC2 는 하드웨어 문제로 알아서 재시작되므로 그때 아무도
+# 없으면 Vault 는 조용히 죽어 있다.
+#
+# 자격증명을 적지 않는다. 인스턴스 프로파일이 준다
+# (terraform/aws/vault/iam.tf 의 unseal 정책 — Encrypt·Decrypt·DescribeKey).
+seal "awskms" {
+  region     = "{{ vault_awskms_region }}"
+  kms_key_id = "{{ vault_awskms_key_id }}"
+}
+
+# ── 리스너 ──────────────────────────────────────────────────────
+#
+# **0.0.0.0 에 바인드하지만 인터넷에서 닿지 않는다.**
+# Security Group 에 8200 ingress 가 없고, 애초에 Private Subnet 이라
+# 퍼블릭 IP 가 없다 (terraform/aws/vault/compute.tf).
+#
+# 메시 IP 에만 바인드하지 않는 이유는 부팅 순서다. tailscaled 가 인터페이스를
+# 올리기 전에 vault 가 시작하면 바인드가 실패하고, 그러면 서비스가 재시작
+# 루프에 들어간다.
+listener "tcp" {
+  address         = "0.0.0.0:{{ vault_api_port }}"
+  tls_cert_file   = "{{ vault_tls_dir }}/vault.crt"
+  tls_key_file    = "{{ vault_tls_dir }}/vault.key"
+  tls_min_version = "tls12"
+}
+
+# 단일 노드라도 raft 가 요구한다.
+api_addr     = "https://{{ vault_tls_domain }}:{{ vault_api_port }}"
+cluster_addr = "https://{{ vault_tls_domain }}:{{ vault_cluster_port }}"
+
+# ── 감사 ────────────────────────────────────────────────────────
+#
+# 감사 장치는 설정 파일이 아니라 API 로 켠다 (terraform/vault/audit.tf).
+# **초기화 전에는 켤 수 없다.** 그래서 여기 적을 수 없다.
+
+# 메모리를 스왑으로 내리지 않는다. 스왑에 나간 시크릿은 디스크에 평문으로 남는다.
+#
+# common 롤이 swap 을 끄지만 그것에 의존하지 않는다 — 이 노드가 K8s 노드가
+# 아니어서 나중에 swap 정책이 갈릴 수 있다.
+disable_mlock = false

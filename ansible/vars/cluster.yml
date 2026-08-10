@@ -42,3 +42,40 @@ kubernetes_admin_conf: /etc/kubernetes/admin.conf
 calico_version: v3.32.1
 calico_mtu: 1230
 calico_manifest_directory: /etc/kubernetes/addons/calico
+
+# ── Felix 의 netfilter mark 마스크 ─────────────────────────────
+#
+# **기본값(0xffff0000)을 쓰면 Tailscale 과 부딪힌다.** Felix 는 이 마스크가
+# 덮는 비트를 자기 것으로 쓰는데, Tailscale 이 그 안의 0x40000(subnet route)과
+# 0x80000(bypass)을 이미 쓰고 있다. 둘 다 호스트 netns 에 있으므로 —
+# tailscaled 는 파드가 아니라 데비안 패키지다(roles/vpn-mesh) — 서로의 mark 를
+# 자기 것으로 읽는다.
+#
+# 특히 0x80000 은 tailscaled 가 ip rule 우선순위 5210·5230·**5250** 에 거는
+# bypass mark 다. 5250 은 `unreachable` 이다. Felix 가 정책 평가 중 그 비트를
+# scratch 로 세우면 그 패킷이 Tailscale 라우팅 규칙으로 빠져 죽는다.
+# 파드·방향·정책 히트 여부에 따라 걸렸다 안 걸렸다 해서 원인이 안 드러난다.
+#
+# → findings/20260803_calico-tailscale-mark-collision.md
+#   https://github.com/tailscale/tailscale/issues/591
+#
+# 비트 20 위로만 남긴다. Tailscale 이 쓰는 것은 비트 18·19 둘뿐이다.
+# kube-proxy 는 0x4000·0x8000(비트 14·15)이라 양쪽 다 안 건드린다.
+#
+# **최상위 비트(31)는 못 쓴다. CRD 필드가 int32 다.**
+#   iptablesMarkMask:  format: int32,  type: integer   (v3.32.1 CRD)
+#
+# 그래서 한때 여기 있던 0xfff00000(=4293918720)은 **적용된 적이 없다.**
+# API 서버가 이렇게 거부한다 (2026-08-04 dry-run 확인):
+#
+#   The FelixConfiguration "default" is invalid: Invalid value: "":
+#   Checked value must be of type integer with format int32 in spec.iptablesMarkMask
+#
+# 0x7ff00000 은 비트 20–30 으로 11비트다. Felix 가 필요로 하는 최소 8비트를
+# 넘고, 실측에서 이 값으로 정상 동작한다.
+#
+# **비트가 모자라면 Felix 는 죽지 않는다.** 로그로만 알리고 기본값 근처로
+# 돌아간다 — 겹친 채로 "정상" 으로 보인다. 그 판정은 아래 롤이 한다
+# (roles/cni-calico/tasks/main.yml 의 「Felix 가 고른 mark 비트를 검사한다」).
+# 정말 모자라면 0x7ff30000 으로 올린다 — 비트 16·17 은 Tailscale 이 안 쓴다.
+calico_iptables_mark_mask: "0x7ff00000"

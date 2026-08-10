@@ -23,3 +23,16 @@ kind: APIServer
 metadata:
   name: default
 spec: {}
+---
+# **calico-node 가 뜨기 전에 들어가야 한다.** 이 파일은 Installation 과 같이
+# 적용되므로 Felix 가 처음 체인을 프로그래밍할 때 이 마스크를 들고 시작한다.
+# 나중에 바꾸면 Felix 가 전 체인을 다시 깔면서 순단이 생긴다.
+#
+# 왜 기본값을 못 쓰는지는 vars/cluster.yml 의 calico_iptables_mark_mask 주석에
+# 있다. 요지는 Tailscale 과 mark 비트가 겹친다는 것이다.
+apiVersion: crd.projectcalico.org/v1
+kind: FelixConfiguration
+metadata:
+  name: default
+spec:
+  iptablesMarkMask: {{ calico_iptables_mark_mask }}

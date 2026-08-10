@@ -24,10 +24,21 @@ pveum aclmod / -user terraform@pve -role Administrator
 pveum user token add terraform@pve provisioning --privsep 0
 ```
 
-출력된 `full-tokenid` 와 `value` 를 `terraform.tfvars` 의 `proxmox_api_token` 에
-`user@realm!tokenid=uuid` 형식으로 합쳐 넣는다.
+출력된 `full-tokenid` 와 `value` 를 `user@realm!tokenid=uuid` 형식으로 합쳐
+**Vault 에 넣는다. `terraform.tfvars` 에 넣지 않는다** (2026-07-31 변경 —
+`tasks/done/006_vault-setup.md`).
 
-ansible 인벤토리도 같은 토큰을 쓴다. 환경변수로도 내보낸다:
+```bash
+vault kv put secret/onp/proxmox \
+  api_token='terraform@pve!provisioning=<uuid>' \
+  endpoint='https://192.168.0.10:8006/'
+```
+
+terraform 은 이 값을 **ephemeral 자원**으로 읽는다. 그래서 상태 파일에 남지
+않는다 → `vault.tf`
+
+ansible 인벤토리도 같은 값을 쓴다. `scripts/cntlp-env.sh` 가 Vault 에서 읽어
+넷으로 분해해 내보낸다 — 손으로 export 하지 않는다:
 
 ```bash
 export PROXMOX_URL=https://192.168.0.10:8006/

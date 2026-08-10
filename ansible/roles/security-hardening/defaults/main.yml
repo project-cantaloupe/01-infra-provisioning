@@ -10,6 +10,44 @@ security_ssh_allow_from:
   - 192.168.0.0/16
   - 100.64.0.0/10 # Tailscale CGNAT 대역
 
+# 플랫폼마다 더 열어야 하는 대역. 위 목록은 어디서나 같고, 여기는 갈린다.
+#
+# **이게 없으면 메시가 죽는 순간 노드가 고립된다.** 위 목록은 사설 대역과
+# tailnet 뿐이라, 클라우드가 제공하는 out-of-band 접속 경로가 전부 빠져 있다.
+# ufw 를 켜는 순간 그 경로가 닫히고, 남는 것은 메시 하나다 — 그런데 메시가
+# 끊겼을 때 쓰려고 있는 것이 out-of-band 경로다.
+#
+# 2026-08-04 에 실제로 그 상황을 겪었다. GCP 워커 2대가 Cloud NAT 외부 IP
+# 교체로 tailnet 에서 동시에 떨어졌고, 그때 노드를 들여다본 유일한 경로가
+# 콘솔이었다. 당시 그 노드들은 ufw 가 꺼져 있어서 살았다.
+# → tasks/todo/009_node-access-paths.md
+#
+# 값은 인벤토리 group_vars 가 정한다 (inventories/gcp/group_vars/platform_gcp.yml).
+# 롤 기본값을 비워두는 이유는 대역이 플랫폼 사실이라서다 — AWS 노드에
+# GCP IAP 대역을 열어봤자 뜻이 없다.
+#
+# ── 왜 GCP 만 채워져 있나 (2026-08-04 전수 확인) ──────────────
+#
+# 세 영역의 out-of-band 경로가 방화벽에서 다르게 보인다.
+#
+#   AWS    EIC + EICE     출발지 10.20.10.x  → 위 10.0.0.0/8 이 이미 덮는다
+#   온프렘  LAN · Proxmox  출발지 192.168.0.x → 위 192.168.0.0/16 이 덮는다
+#   GCP    IAP 터널        출발지 35.235.240.0/20 → **RFC1918 이 아니다**
+#
+# **EICE 는 네 VPC 서브넷 안에 ENI 를 만들어 사설 IP 로 접속한다.** 그래서
+# 사설 대역 규칙에 자연히 걸린다. 반면 GCP IAP 는 구글 인프라에서 공인
+# 대역으로 들어온다 — 사설 대역을 아무리 열어도 안 걸린다. 이 구조 차이가
+# GCP 만 따로 채워야 하는 이유의 전부다.
+#
+# AWS 노드 둘 다 공인 IP 가 없다(IMDS public-ipv4 → 404). 공인 대역에서 오는
+# 직접 EIC 는 불가능하고 EICE 만이 경로다. `cntlp-aws-wk-01` 이 ufw active
+# 인 채로 EIC 가 되던 것이 실증이다.
+#
+# **아직 확인 못 한 것** — EC2 Serial Console 은 방화벽 밖의 진짜 out-of-band
+# 인데, 계정 수준 활성화와 IAM 이 필요하다. AWS 자격증명이 없어 확인하지
+# 못했다. 메시도 EICE 도 죽은 상황의 마지막 수단이라 언젠가 확인해야 한다.
+security_ssh_allow_from_extra: []
+
 # 메시 인터페이스. 이 인터페이스로 들어오는 것은 통째로 허용한다.
 # 클러스터 내부 통신(kubelet 10250, NodePort, CNI)이 전부 여기를 탄다.
 security_mesh_interface: tailscale0
@@ -22,3 +60,30 @@ security_calico_interface: vxlan.calico
 security_calico_pod_cidr: >-
   {{ kubernetes_pod_cidr | default('10.244.0.0/16') }}
 security_tailscale_udp_port: "41641"
+
+# ── 루프 가드의 두 번째 층 (ip rule) ────────────────────────────
+#
+# 위 `security_tailscale_calico_loop_guard` 가 켜면 **두 층이 함께 선다.**
+#
+#   층 1  ufw before.rules 의 DROP     netfilter OUTPUT/INPUT
+#   층 2  아래 ip rule                  라우팅 정책 조회 (한 층 이르다)
+#
+# **왜 둘인가 — 고장 원인이 서로 독립이라서다.** 층 1 은 `ufw` 가 active 일
+# 때만 존재한다. 그런데 우리는 ufw 를 일상적으로 끈다: 데드맨 타이머가 돌 때,
+# 문제를 볼 때. 실제로 2026-08-05 에 `onp-wk-01` 이 데드맨으로 `ufw disable`
+# 됐고 그 순간 루프 가드가 통째로 사라졌다 — 아무도 몰랐다.
+# 층 2 는 systemd 유닛이라 ufw 상태를 공유하지 않는다.
+#
+# 반대로 층 2 는 **출력 방향만** 덮는다. 입력 방향(`-i vxlan.calico`)은
+# 층 1 에만 있다. 서로를 못 덮는 지점이 각자 있어서 둘 다 둔다.
+# → decisions/20260806_loop-guard-two-layers.md
+#
+# 우선순위는 tailscaled 가 만드는 규칙(5210~5270)보다 **작아야** 한다.
+# ip rule 은 번호가 작은 것이 먼저 이기므로, 5210(lookup main)보다 앞에서
+# 끊어야 Calico 경로를 타기 전에 막힌다.
+security_loop_guard_rule_pref: 5200
+
+# tailscaled 가 자기 패킷에 찍는 bypass 마크. 이 값은 Tailscale 이 정한다 —
+# 바꾸는 값이 아니라 맞추는 값이다. `ip rule` 출력의 5210~5250 에서 같은
+# 마크를 볼 수 있다.
+security_tailscale_fwmark: "0x80000/0xff0000"

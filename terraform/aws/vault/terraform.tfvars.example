@@ -1,0 +1,26 @@
+# 복사해서 terraform.tfvars 로 쓴다. tfvars 는 .gitignore 가 막는다.
+#
+# 이 스택에는 시크릿 입력이 없다. Vault 안의 값은 사람이 vault CLI 로 넣고,
+# tailnet auth key 는 Ansible 이 실행 시점 환경변수로 받는다
+# (CNTLP_TAILSCALE_AUTH_KEY) — 그래서 tfstate 에 남지 않는다.
+
+# 실제 AWS 계정 ID와 Network 상태에서 사용한 리전을 입력한다.
+aws_account_id = "123456789012"
+aws_region     = "ap-northeast-2"
+
+# Network 상태와 동일한 팀 관리 태그 값을 사용한다.
+owner      = "REPLACE_WITH_TEAM"
+data_class = "REPLACE_WITH_DATA_CLASS"
+
+# Vault EC2 Key Pair 에 등록할 로컬 공개키 경로
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# raft 단일 노드에는 t3.small 로 충분하다.
+instance_type    = "t3.small"
+root_volume_size = 20
+
+# 스냅샷 보관 기간(일). 시크릿을 담은 객체를 무한히 쌓지 않는다.
+snapshot_retention_days = 90
+
+# unseal KMS 키 삭제 대기 기간(일). 이 키를 잃으면 Vault 데이터를 잃는다.
+kms_deletion_window_days = 30

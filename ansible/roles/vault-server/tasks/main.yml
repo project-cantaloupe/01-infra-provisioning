@@ -1,0 +1,317 @@
+---
+# Vault 서버를 설치하고 **초기화되지 않은 상태로** 세운다.
+# `vault operator init` 은 하지 않는다 — 이유는 README 에 있다.
+
+# ── 0. 사전 조건 ────────────────────────────────────────────────
+#
+# 값이 없으면 조용히 넘어가지 않는다. 무엇이 없는지 말하고 멈춘다.
+# 이 롤이 KMS 키 없이 끝나면 Vault 가 shamir seal 로 서고, 그건 실패로 보이지 않는다.
+
+- name: auto-unseal KMS 키가 지정됐는지 본다
+  ansible.builtin.assert:
+    that: vault_awskms_key_id | length > 0
+    fail_msg: |
+      vault_awskms_key_id 가 비어 있다. 이 값 없이 진행하면 Vault 가 shamir seal 로
+      서고 재부팅마다 사람이 unseal 해야 한다. 그 상태는 정상으로 보인다.
+
+      terraform 출력에서 가져온다:
+        ansible-playbook -i inventories/aws/aws_ec2.yaml playbooks/site-vault.yaml \
+          -e vault_awskms_key_id=$(terraform -chdir=../terraform/aws/vault output -raw vault_kms_key_id)
+    success_msg: "KMS 키 확인 — {{ vault_awskms_key_id }}"
+
+# ── 1. tailnet 확인 ─────────────────────────────────────────────
+#
+# vpn-mesh 롤이 앞에서 조인했다. 여기서는 결과만 읽는다 —
+# TLS 도메인과 api_addr 이 tailnet 이름에 달려 있다.
+
+- name: tailscale 상태를 읽는다
+  ansible.builtin.command: tailscale status --json
+  register: _ts_status
+  changed_when: false
+
+- name: tailnet 이름과 상태를 뽑는다
+  ansible.builtin.set_fact:
+    # DNSName 은 "<이름>.<tailnet>.ts.net." 이다. 끝의 점을 뗀다.
+    _mesh_fqdn: "{{ (_ts_status.stdout | from_json).Self.DNSName | default('') | regex_replace('\\.$', '') }}"
+    _mesh_state: "{{ (_ts_status.stdout | from_json).BackendState | default('') }}"
+
+- name: tailnet 에 실제로 붙었는지 검사한다
+  ansible.builtin.assert:
+    that:
+      - _mesh_state == "Running"
+      - _mesh_fqdn | length > 0
+    fail_msg: >-
+      tailnet 에 붙어 있지 않다 (BackendState={{ _mesh_state | default('없음') }}).
+      vpn-mesh 롤이 실패했거나 건너뛰어졌다. Vault API 접근 경로가 메시뿐이므로
+      이 상태로 진행하면 인스턴스는 살아 있고 아무도 닿을 수 없게 된다.
+      Private Subnet 이라 NAT 경로(terraform/aws/egress)가 없으면 조인 자체가
+      안 된다는 점도 함께 본다.
+    success_msg: "tailnet 확인 — {{ _mesh_fqdn }}"
+
+- name: TLS 도메인을 정한다
+  ansible.builtin.set_fact:
+    vault_tls_domain: "{{ vault_tls_domain if vault_tls_domain | length > 0 else _mesh_fqdn }}"
+
+# ── 2. 설치 ─────────────────────────────────────────────────────
+
+- name: HashiCorp GPG 키를 등록한다
+  ansible.builtin.get_url:
+    url: https://apt.releases.hashicorp.com/gpg
+    dest: /usr/share/keyrings/hashicorp.asc
+    mode: "0644"
+  # 일시적 실패로 빈 파일이 남으면 저장소는 등록되고 키만 없는 상태가 되어
+  # 이후 모든 apt 작업이 NO_PUBKEY 로 깨진다. 워크스테이션에서 실제로 겪었다 —
+  # findings/20260730_apt-keyring-zero-byte.md
+  register: _hashicorp_get
+  retries: 3
+  delay: 2
+  until: _hashicorp_get is succeeded
+
+- name: HashiCorp 키가 비어 있지 않은지 본다
+  ansible.builtin.stat:
+    path: /usr/share/keyrings/hashicorp.asc
+  register: _hashicorp_key
+
+- name: 0바이트 키로 저장소를 등록하지 않는다
+  ansible.builtin.assert:
+    that: _hashicorp_key.stat.exists and _hashicorp_key.stat.size > 0
+    fail_msg: >-
+      /usr/share/keyrings/hashicorp.asc 가 없거나 0바이트다. 이대로 저장소를
+      등록하면 이후 모든 apt-get update 가 서명 검증에 실패한다.
+      키를 지우고 다시 돌린다 — findings/20260730_apt-keyring-zero-byte.md
+    success_msg: "HashiCorp 키 확인 ({{ _hashicorp_key.stat.size }} bytes)"
+
+- name: HashiCorp apt 저장소를 등록한다
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/keyrings/hashicorp.asc]
+      https://apt.releases.hashicorp.com {{ ansible_facts.distribution_release }} main
+    filename: hashicorp
+    state: present
+
+- name: vault 를 버전 고정으로 깐다
+  ansible.builtin.apt:
+    name: "vault={{ vault_apt_version }}"
+    state: present
+    update_cache: true
+
+- name: 설치된 버전을 읽는다
+  ansible.builtin.command: vault version
+  register: _vault_ver
+  changed_when: false
+
+- name: 의도한 버전인지 본다
+  ansible.builtin.assert:
+    that: ('Vault v' ~ vault_version) in _vault_ver.stdout
+    fail_msg: "vault 가 {{ vault_version }} 이 아니다: {{ _vault_ver.stdout }}"
+    success_msg: "{{ _vault_ver.stdout }}"
+
+# ── 3. TLS ──────────────────────────────────────────────────────
+#
+# `tailscale cert` 가 tailnet CA 로 인증서를 발급한다. 공인 체인이라
+# 클라이언트가 별도 신뢰 설정 없이 붙는다.
+#
+# **tailnet 관리자 설정에서 HTTPS 를 켜둬야 한다.** 안 켜져 있으면 이 명령이
+# 실패한다 (Tailscale admin → DNS → HTTPS Certificates).
+
+- name: TLS 디렉터리를 만든다
+  ansible.builtin.file:
+    path: "{{ vault_tls_dir }}"
+    state: directory
+    owner: vault
+    group: vault
+    mode: "0750"
+
+- name: 인증서가 이미 있는지 본다
+  ansible.builtin.stat:
+    path: "{{ vault_tls_dir }}/vault.crt"
+  register: _vault_cert
+
+- name: tailnet 인증서를 발급한다
+  ansible.builtin.command:
+    cmd: >-
+      tailscale cert
+      --cert-file {{ vault_tls_dir }}/vault.crt
+      --key-file {{ vault_tls_dir }}/vault.key
+      {{ vault_tls_domain }}
+  when: not _vault_cert.stat.exists
+  register: _cert_issue
+  changed_when: _cert_issue.rc == 0
+  notify: vault 재시작
+
+- name: 인증서 소유자를 vault 로 맞춘다
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: vault
+    group: vault
+    mode: "0640"
+  loop:
+    - "{{ vault_tls_dir }}/vault.crt"
+    - "{{ vault_tls_dir }}/vault.key"
+
+# 유효기간이 90일이다. 갱신을 사람이 기억하면 반드시 잊는다.
+- name: 인증서 갱신 유닛을 놓는다
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/vault-cert-renew.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Vault tailnet 인증서 갱신
+      After=tailscaled.service
+      Requires=tailscaled.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/tailscale cert --cert-file {{ vault_tls_dir }}/vault.crt --key-file {{ vault_tls_dir }}/vault.key {{ vault_tls_domain }}
+      ExecStartPost=/bin/chown vault:vault {{ vault_tls_dir }}/vault.crt {{ vault_tls_dir }}/vault.key
+      ExecStartPost=/bin/systemctl reload vault
+  notify: systemd 재적재
+
+- name: 인증서 갱신 타이머를 놓는다
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/vault-cert-renew.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Vault tailnet 인증서 갱신 ({{ vault_cert_renew_calendar }})
+
+      [Timer]
+      OnCalendar={{ vault_cert_renew_calendar }}
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: systemd 재적재
+
+- name: 갱신 타이머를 켠다
+  ansible.builtin.systemd:
+    name: vault-cert-renew.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# ── 4. 설정 ─────────────────────────────────────────────────────
+
+- name: raft 데이터 디렉터리를 만든다
+  ansible.builtin.file:
+    path: "{{ vault_data_dir }}"
+    state: directory
+    owner: vault
+    group: vault
+    mode: "0700"
+
+- name: vault.hcl 을 놓는다
+  ansible.builtin.template:
+    src: vault.hcl.j2
+    dest: "{{ vault_config_dir }}/vault.hcl"
+    owner: vault
+    group: vault
+    mode: "0640"
+    # 설정이 틀리면 vault 가 시작하지 못한다. 이전 파일을 남긴다.
+    backup: true
+  notify: vault 재시작
+
+# 패키지 기본 설정이 남아 있으면 두 파일이 병합되면서 listener 가 둘이 되고
+# 하나는 TLS 없이 뜬다.
+- name: 패키지 기본 설정 잔여물을 지운다
+  ansible.builtin.file:
+    path: "{{ vault_config_dir }}/{{ item }}"
+    state: absent
+  loop:
+    - vault.hcl.dpkg-dist
+    - vault.hcl.dpkg-old
+
+# ── 4b. 감사 로그 자리 ──────────────────────────────────────────
+#
+# **감사 장치는 terraform/vault 스택이 API 로 켠다** (초기화 전에는 켤 수 없어서
+# 이 롤이 할 수 없다). 그런데 그 apply 는 **디렉터리가 없으면 실패한다.**
+# 그래서 자리만 여기서 만든다.
+#
+# 그리고 더 중요한 것 — 감사 장치가 하나라도 켜져 있으면 **로그를 쓸 수 없을 때
+# Vault 가 요청을 거부한다.** 디스크가 차면 Vault 가 멈춘다는 뜻이다. 의도된
+# 동작이지만(감사 없이 시크릿을 내주지 않는다) rotate 가 없으면 그 일이
+# 반드시 일어난다.
+
+- name: 감사 로그 디렉터리를 만든다
+  ansible.builtin.file:
+    path: "{{ vault_audit_log_path | dirname }}"
+    state: directory
+    owner: vault
+    group: vault
+    mode: "0750"
+
+# copytruncate 를 쓰지 않는다. Vault 는 파일을 다시 열 수 있고(mode 옵션),
+# copytruncate 는 복사와 truncate 사이에 쓰인 줄을 잃는다 — 감사 로그에서
+# 줄을 잃는 것은 없는 것과 비슷하다.
+- name: 감사 로그 rotate 를 넣는다
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/vault-audit
+    mode: "0644"
+    content: |
+      {{ vault_audit_log_path }} {
+          daily
+          rotate {{ vault_audit_log_rotate_days }}
+          missingok
+          notifempty
+          compress
+          delaycompress
+          create 0600 vault vault
+          postrotate
+              /bin/systemctl reload vault > /dev/null 2>&1 || true
+          endscript
+      }
+
+# ── 5. 서비스 ───────────────────────────────────────────────────
+
+- name: vault 를 켠다
+  ansible.builtin.systemd:
+    name: vault
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: 핸들러를 지금 돌린다
+  ansible.builtin.meta: flush_handlers
+
+# ── 6. 검증 ─────────────────────────────────────────────────────
+#
+# **"서비스가 active 다" 로 끝내지 않는다.** Vault 는 sealed 상태에서도,
+# seal 블록이 반영되지 않은 상태에서도 active 다. API 에 물어본다.
+
+- name: API 포트가 열리기를 기다린다
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ vault_api_port }}"
+    timeout: 60
+
+- name: seal 상태를 읽는다
+  ansible.builtin.uri:
+    url: "https://{{ vault_tls_domain }}:{{ vault_api_port }}/v1/sys/seal-status"
+    # 초기화 전에는 상태 코드가 200 이 아닐 수 있다. 코드로 실패시키지 않는다.
+    status_code: [200, 429, 472, 473, 501, 503]
+  register: _seal
+  retries: 5
+  delay: 5
+  until: _seal.json is defined
+
+# seal 타입이 shamir 면 이 롤의 목적이 절반 실패한 것인데, 그런데도 Vault 는
+# 정상으로 보인다. 재부팅마다 사람이 필요해진다.
+- name: awskms seal 이 실제로 붙었는지 본다
+  ansible.builtin.assert:
+    that: _seal.json.type | default('') == "awskms"
+    fail_msg: >-
+      seal 타입이 awskms 가 아니다 ({{ _seal.json.type | default('없음') }}).
+      vault.hcl 의 seal 블록이 반영되지 않았다. 이 상태로 두면 재부팅마다
+      사람이 unseal 해야 한다. `journalctl -u vault -n 50` 을 본다.
+    success_msg: "seal=awskms"
+
+- name: 무엇이 서 있는지 보고한다
+  ansible.builtin.debug:
+    msg: >-
+      Vault {{ vault_version }} — https://{{ vault_tls_domain }}:{{ vault_api_port }}
+      (seal=awskms, initialized={{ _seal.json.initialized | default(false) }}).
+      {% if not (_seal.json.initialized | default(false)) %}
+      **아직 초기화되지 않았다.** `vault operator init` 은 사람이 한다 —
+      recovery key 를 받아 오프라인에 봉인해야 하므로 자동화하지 않는다.
+      references/20260801_infra-05-vault-ops.md 를 본다.
+      {% endif %}

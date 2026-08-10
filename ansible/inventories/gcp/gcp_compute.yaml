@@ -1,6 +1,69 @@
 plugin: google.cloud.gcp_compute
-projects: ["{{ lookup('env', 'GCP_PROJECT') }}"]
+
+# **`projects` 는 템플릿도 env 도 안 된다.** 플러그인 옵션 명세에 `env` 가
+# 없고 인벤토리 플러그인이 이 값을 Jinja 로 렌더링하지도 않는다. 한때 여기
+# `{{ lookup('env', 'GCP_PROJECT') }}` 이 있었는데, 그 문자열이 **그대로**
+# 프로젝트 이름으로 나가서 이렇게 죽었다 (2026-08-05):
+#
+#   Permission denied on resource project {{ lookup('env', 'GCP_PROJECT') }}.
+#
+# 자격증명 문제로 읽히지만 아니다 — 존재하지 않는 프로젝트를 물어본 것이다.
+# 그래서 리터럴로 박는다. 프로젝트 ID 는 비밀이 아니고
+# terraform/gcp/terraform.tfvars.example 에도 이미 있다.
+# aws_ec2.yaml 이 리전과 태그를 박아두는 것과 같은 자리다.
+projects: ["project-1a3248ab-0082-49b3-878"]
+
+# 인증 방식. **비밀이 아니라 모드 선택자다.**
+#
+# 한때 `GCP_AUTH_KIND` 환경변수로만 넘겼는데, 그러면 셸이 바뀔 때마다 이렇게
+# 죽는다 (2026-08-05 실측):
+#
+#   No setting was provided for required configuration
+#   plugin: gcp_compute setting: auth_kind
+#
+# 비밀만 환경변수로 두고 나머지는 파일에 박는다. **환경변수는 프로세스와
+# 함께 사라지므로, 거기 담긴 값은 전부 「매번 다시 넣어야 하는 것」이 된다.**
+# 그 비용은 비밀에만 지불한다.
+auth_kind: serviceaccount
+
+# ── 키 자체는 환경변수로만 받는다 ───────────────────────────────
+#
+# 이 파일에 키를 적지 않는다. 플러그인이 읽는 값은 둘 중 하나다.
+#
+#   GCP_SERVICE_ACCOUNT_CONTENTS   키 JSON 을 **내용 그대로**   ← 이쪽을 쓴다
+#   GCP_SERVICE_ACCOUNT_FILE       키 파일 경로                 ← 사본이 하나 는다
+#
+# **CONTENTS 를 쓰면 디스크에 평문 사본이 안 생긴다.** SSH 개인키를 파일이
+# 아니라 ssh-agent 메모리로만 넣는 것과 같은 원칙이다
+# → decisions/20260731_secret-access-no-fallback.md
+# scripts/cntlp-env.sh 가 Vault 에서 읽어 export 한다 (011 이 배선한다).
+
 filters: ["status = RUNNING"]
+
+# 인벤토리 호스트명을 인스턴스 이름으로 고정한다.
+#
+# 플러그인 기본값은 public_ip → private_ip → name 순으로 첫 번째 있는 것을 쓴다.
+# GCP 워커는 외부 IP 가 없어서(Cloud NAT 로 나가기만 한다) private_ip 가 뽑히고,
+# 호스트명이 `10.0.10.x` 가 된다. 이름으로 고정해야 아래 compose 도 읽히고
+# 플레이북 출력도 사람이 읽을 수 있다.
+hostnames:
+  - name
+
+compose:
+  # **기본 ansible_host 는 내부 IP 라 워크스테이션에서 못 간다.**
+  # 10.0.10.0/24 는 GCP VPC 안에서만 사는 대역이고, tailnet 은 이 대역을
+  # 광고하지 않는다 (광고하는 것은 파드 CIDR 뿐 —
+  # inventories/aws/group_vars/role_control_plane.yml).
+  #
+  # 도달 경로는 메시 하나뿐이므로 MagicDNS 이름을 직접 쓴다. AWS 가 인스턴스
+  # ID + EICE 터널을 쓰는 것과 같은 자리의 선택이고, 이유만 다르다.
+  #
+  # 노드의 tailnet 이름은 vpn-mesh 롤이 `--hostname` 으로 호스트명과 같게
+  # 맞춘다. 그래서 GCP 인스턴스 이름 = tailnet 이름이 성립한다. tailnet 에
+  # 같은 이름이 이미 있으면 Tailscale 이 `-1` 을 붙이는데, 그러면 이 조립이
+  # 깨진다 — 롤이 그 경우를 검사해서 멈춘다.
+  ansible_host: name + '.tail270b85.ts.net'
+
 vars_prefix: gcp_
 keyed_groups:
   - key: labels.platform

@@ -21,10 +21,29 @@ hostnames:
 hostvars_prefix: aws_
 compose:
   ansible_host: aws_instance_id
+# **키 이름에 hostvars_prefix 가 붙는다.** 위에서 aws_ 를 지정했으므로
+# 플러그인이 노출하는 tags 는 aws_tags 가 된다 — aws_ec2_tags 가 아니다.
+# 틀리면 그룹이 **하나도 만들어지지 않는데 인벤토리는 정상 파싱된다.**
+# 호스트는 보이고 그룹만 없어서 플레이북이 "0 hosts matched" 로 조용히 끝난다.
+# ansible.cfg 의 unparsed_is_failed 도 이건 못 잡는다 (파싱은 성공하니까).
+# 확인 방법: ansible-inventory -i ... --graph 에 platform_aws 가 보이는지.
 keyed_groups:
   # platform=aws → platform_aws 그룹
-  - key: aws_ec2_tags.platform
+  - key: aws_tags.platform
     prefix: platform
   # role=control-plane/service → role_control_plane/role_service 그룹
-  - key: aws_ec2_tags.role
+  #
+  # **role 은 Kubernetes 노드 전용이다.** 허용값은 control-plane · service ·
+  # devops · monitoring · messaging · logging 이고, 이 값은 Terraform 태그 →
+  # 이 인벤토리 → kubeadm join → Node 라벨까지 그대로 흘러간다
+  # (playbooks/site-node-labels.yaml 이 종착지에서 검증한다).
+  # → decisions/20260729_k8s-labeling-convention.md
+  - key: aws_tags.role
     prefix: role
+  # component=vault → component_vault 그룹
+  #
+  # 클러스터에 조인하지 않는 노드를 위한 것이다. Vault EC2 가 첫 사례다 —
+  # role 을 붙이면 K8s 노드 전용 값에 K8s 아닌 값이 섞여 그 태그가 두 가지를
+  # 뜻하게 된다. component 는 스택 이름이라 그런 충돌이 없다.
+  - key: aws_tags.component
+    prefix: component
