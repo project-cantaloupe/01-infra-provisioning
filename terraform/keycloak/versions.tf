@@ -25,5 +25,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    random = {
+      # oauth2-proxy 의 쿠키 암호화 키를 만든다 (secrets.tf).
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }

@@ -143,3 +143,34 @@ resource "aws_secretsmanager_secret_version" "vault_oidc" {
     client_secret = keycloak_openid_client.vault.client_secret
   })
 }
+
+# OpenSearch Dashboards (oauth2-proxy). 쿠키 암호화 키를 함께 넣는다 —
+# oauth2-proxy 는 세션을 쿠키에 담으므로 그 키가 없으면 못 뜬다.
+# **32바이트여야 한다.** 다른 길이면 기동 시 죽는다.
+resource "random_password" "opensearch_cookie" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "opensearch_oidc" {
+  name        = "${local.oidc_secret_prefix}/opensearch-dashboards"
+  description = "oauth2-proxy client secret + cookie secret. terraform/keycloak 이 소유한다."
+
+  recovery_window_in_days = 7
+
+  tags = {
+    Project   = "cantaloupe"
+    ManagedBy = "terraform"
+    Stack     = "keycloak"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "opensearch_oidc" {
+  secret_id = aws_secretsmanager_secret.opensearch_oidc.id
+
+  secret_string = jsonencode({
+    client_id     = keycloak_openid_client.opensearch.client_id
+    client_secret = keycloak_openid_client.opensearch.client_secret
+    cookie_secret = random_password.opensearch_cookie.result
+  })
+}

@@ -30,3 +30,13 @@ tailscale_serve_routes:
   - path: /argocd
     backend: http://127.0.0.1:31430/argocd/
     check: http://127.0.0.1:31430/argocd/
+
+  # OpenSearch Dashboards — **직접 가리키지 않는다.** 앞의 oauth2-proxy 를
+  # 가리킨다. Dashboards(30561)를 직접 걸면 인증 게이트를 건너뛴다
+  # → decisions/20260811_opensearch-sso-via-proxy.md
+  #
+  # ⚠️ 경로가 oauth2-proxy 의 `--proxy-prefix=/logs/oauth2` 와 짝이다.
+  # 한쪽만 바꾸면 로그인 뒤 콜백이 어긋난다.
+  - path: /logs
+    backend: http://127.0.0.1:30418
+    check: http://127.0.0.1:30418/ping
