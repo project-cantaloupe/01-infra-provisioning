@@ -4,6 +4,11 @@ terraform {
   required_version = ">= 1.11.0, < 2.0.0"
 
   required_providers {
+    aws = {
+      # OIDC 클라이언트 시크릿을 Secrets Manager 에서 읽는다 (oidc.tf).
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
     vault = {
       source = "hashicorp/vault"
       # 5.10 계열의 패치 버전만 허용한다. 실제 선택 버전은

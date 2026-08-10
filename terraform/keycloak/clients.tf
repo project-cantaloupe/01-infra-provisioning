@@ -231,3 +231,124 @@ resource "keycloak_openid_client_default_scopes" "harbor" {
     keycloak_openid_client_scope.groups.name,
   ]
 }
+
+# ── Vault — 네 번째 소비자 ─────────────────────────────────────
+#
+# **이 클라이언트가 `CONSTRAINTS.md` 의 한 줄을 닫는다.** Vault UI 의
+# `userpass` 는 Keycloak 이 서기 전까지의 임시 창구였고, 그 삭제가 완료
+# 조건으로 적혀 있다 → decisions/20260731_vault-placement.md
+#
+# Grafana·Harbor 와 같은 이유로 confidential 이다 — Vault 서버가 인가
+# 코드를 교환한다.
+#
+# ⚠️ **리다이렉트가 둘인데 성격이 다르다.**
+#
+#   /ui/vault/auth/oidc/oidc/callback   브라우저 UI
+#   http://localhost:8250/oidc/callback CLI (`vault login -method=oidc`)
+#
+# CLI 쪽은 **평문 http 이고 localhost 다.** 이상해 보이지만 맞다 —
+# `vault login` 이 자기 기기에 임시 리스너를 띄우고 브라우저가 거기로
+# 돌아온다. 그 트래픽은 기기 밖으로 나가지 않는다. 빼면 CLI 로그인이
+# `invalid redirect_uri` 로 막히고, UI 만 되는 상태가 된다.
+resource "keycloak_openid_client" "vault" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "vault"
+  name      = "Vault"
+  enabled   = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  valid_redirect_uris = [
+    "https://cntlp-aws-vault-01.tail270b85.ts.net:8200/ui/vault/auth/oidc/oidc/callback",
+    "http://localhost:8250/oidc/callback",
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://cntlp-aws-vault-01.tail270b85.ts.net:8200/ui/",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "vault" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.vault.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}
+
+# ── Kubernetes API 서버 — 다섯 번째이자 마지막 소비자 ──────────
+#
+# **이것이 "클러스터 통합 로그인"의 본체다.** 그리고 폴백이 가장 얇다 —
+# 다른 도구는 로컬 계정이 남아 있지만 K8s API 는 잘못되면
+# break-glass kubeconfig 하나뿐이다
+# → references/20260810_k8s-break-glass-kubeconfig.md
+#
+# ── public 으로 돌아온다 ────────────────────────────────────────
+#
+# Grafana·Harbor·Vault 는 confidential 이었지만 여기는 다시 public 이다.
+# **토큰을 교환하는 주체가 사용자 기기의 kubectl 이기 때문**이다. CLI 에
+# 심은 고정 비밀은 사용자에게 그대로 노출되므로 비밀이 아니다.
+#
+# 판별 기준이 매번 같다 — **누가 인가 코드를 교환하는가.**
+#   브라우저·CLI  → public + PKCE
+#   서버          → confidential
+#
+# ⚠️ **API 서버는 이 클라이언트로 토큰을 받지 않는다.** 서버는 발행자의
+# 공개키로 **검증만** 한다. 그래서 서버 쪽에는 시크릿이 필요 없고,
+# 이 클라이언트는 순전히 kubectl 쪽 물건이다.
+resource "keycloak_openid_client" "kubernetes" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "kubernetes"
+  name      = "Kubernetes API"
+  enabled   = true
+
+  access_type = "PUBLIC"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  pkce_code_challenge_method = "S256"
+
+  # kubelogin(`kubectl oidc-login`)이 로컬에 임시 리스너를 띄운다.
+  # 포트가 고정이 아니라 몇 개를 등록해 둔다 — 쓰는 쪽이
+  # `--oidc-redirect-url-hostname` 없이 기본값을 쓰게 하려는 것이다.
+  valid_redirect_uris = [
+    "http://localhost:8000",
+    "http://localhost:8000/",
+    "http://localhost:18000",
+    "http://localhost:18000/",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "kubernetes" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.kubernetes.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}

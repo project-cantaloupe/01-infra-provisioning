@@ -118,3 +118,28 @@ resource "aws_secretsmanager_secret_version" "harbor_oidc" {
     client_secret = keycloak_openid_client.harbor.client_secret
   })
 }
+
+# Vault. **접두사를 공유하지만 소비자가 다르다** — 앞의 둘은 ESO 가 노드
+# IAM 으로 읽어 클러스터에 넣지만, 이건 클러스터 밖 EC2 의 terraform 이
+# 사람 자격증명으로 읽는다. IAM 정책은 노드용이라 여기엔 관여하지 않는다.
+resource "aws_secretsmanager_secret" "vault_oidc" {
+  name        = "${local.oidc_secret_prefix}/vault"
+  description = "Vault OIDC client secret (realm cantaloupe). terraform/keycloak 이 소유한다."
+
+  recovery_window_in_days = 7
+
+  tags = {
+    Project   = "cantaloupe"
+    ManagedBy = "terraform"
+    Stack     = "keycloak"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "vault_oidc" {
+  secret_id = aws_secretsmanager_secret.vault_oidc.id
+
+  secret_string = jsonencode({
+    client_id     = keycloak_openid_client.vault.client_id
+    client_secret = keycloak_openid_client.vault.client_secret
+  })
+}

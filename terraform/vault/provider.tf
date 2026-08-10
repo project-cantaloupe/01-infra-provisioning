@@ -9,3 +9,8 @@
 #
 # scripts/cntlp-env.sh 가 VAULT_ADDR 을 세우고 토큰 유효성을 확인한다.
 provider "vault" {}
+
+# OIDC 클라이언트 시크릿을 읽기 위해서만 쓴다 (oidc.tf).
+provider "aws" {
+  region = var.aws_region
+}
