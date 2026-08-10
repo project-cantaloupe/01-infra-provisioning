@@ -352,3 +352,56 @@ resource "keycloak_openid_client_default_scopes" "kubernetes" {
     keycloak_openid_client_scope.groups.name,
   ]
 }
+
+# ── OpenSearch Dashboards — oauth2-proxy 를 통해 붙는다 ────────
+#
+# **클라이언트의 상대가 Dashboards 가 아니라 oauth2-proxy 다.**
+# OpenSearch 의 security plugin 을 켜지 않기로 했기 때문이다
+# → decisions/20260811_opensearch-sso-via-proxy.md
+#
+# 그래서 confidential 이다 — oauth2-proxy 가 서버 사이드에서 교환한다.
+# 판별 기준은 매번 같다: 누가 인가 코드를 교환하는가.
+resource "keycloak_openid_client" "opensearch" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "opensearch-dashboards"
+  name      = "OpenSearch Dashboards"
+  enabled   = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  # oauth2-proxy 는 PKCE 를 지원한다(v7.4+). 시크릿과 배타가 아니다.
+  pkce_code_challenge_method = "S256"
+
+  # `/oauth2/callback` 은 oauth2-proxy 의 고정 경로다. 앞의 `/logs` 는
+  # tailscale serve 의 경로이고, oauth2-proxy 에도 같은 값을
+  # `--proxy-prefix` 로 알려줘야 한다 — 한쪽만 바꾸면 콜백이 어긋난다.
+  valid_redirect_uris = [
+    "https://cntlp-onp-wk-01.tail270b85.ts.net/logs/oauth2/callback",
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://cntlp-onp-wk-01.tail270b85.ts.net/logs",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "opensearch" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.opensearch.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}
