@@ -210,7 +210,7 @@ Argo CD를 먼저 배포한 뒤 On-Prem 노드에서 Tailscale Serve를 구성�
 kubectl apply -k ../../02-k8s-manifests/platform/onp/argocd
 
 ansible-playbook -i inventories/onp/proxmox.yaml \
-  playbooks/site-argocd-access.yaml
+  playbooks/site-ui-access.yaml
 ```
 
 접속 주소는 다음과 같다.
