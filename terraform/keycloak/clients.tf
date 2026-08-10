@@ -176,3 +176,58 @@ resource "keycloak_openid_client_default_scopes" "grafana" {
     keycloak_openid_client_scope.groups.name,
   ]
 }
+
+# ── Harbor — 세 번째 소비자 ────────────────────────────────────
+#
+# Grafana 와 같은 이유로 confidential 이다. Harbor 코어가 서버 사이드에서
+# 인가 코드를 교환한다.
+#
+# ⚠️ **Harbor 는 PKCE 를 쓰지 않는다.** `pkce_code_challenge_method` 를
+# 걸면 Keycloak 이 `code_challenge` 없는 요청을 **거절**하고, Harbor 는
+# 그것을 보내지 않으므로 로그인이 통째로 막힌다. 강제하지 않는 것과
+# "PKCE 를 안 쓴다"는 다른 말이고, 여기서는 전자를 고른다 — 클라이언트가
+# 못 하는 것을 서버가 요구하면 그냥 안 된다.
+#
+# 시크릿이 진짜 자격증명이므로 confidential 의 값을 온전히 치른다.
+# 그래서 리다이렉트 주소를 정확히 하나만 등록한다.
+resource "keycloak_openid_client" "harbor" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "harbor"
+  name      = "Harbor"
+  enabled   = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  # ⚠️ **`/c/oidc/callback` 은 Harbor 가 고정으로 쓰는 경로다.**
+  # `externalURL` 이 루트라(서브패스가 아니라) 앞에 붙는 조각이 없다 —
+  # Grafana 가 `/grafana/login/generic_oauth` 였던 것과 대비된다.
+  valid_redirect_uris = [
+    "https://cntlp-onp-wk-01.tail270b85.ts.net/c/oidc/callback",
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://cntlp-onp-wk-01.tail270b85.ts.net",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "harbor" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.harbor.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}
