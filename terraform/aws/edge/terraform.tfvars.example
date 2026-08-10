@@ -4,8 +4,10 @@ aws_region     = "ap-northeast-2"
 owner      = "team-platform"
 data_class = "user-audio"
 
-# NLB에 접근할 Source를 명시한다. 기본값이 없으므로 반드시 입력해야 한다.
-# TLS와 Cognito JWT 검증이 붙기 전까지 /32 단위로만 유지한다.
+# Istio 공개 조회 정책이 배포되기 전에는 false를 유지한다.
+public_read_only_access = false
+
+# NLB에 접근할 Source를 명시한다. 공개 조회 정책이 없으면 /32 단위로 유지한다.
 allowed_ingress_cidrs = ["203.0.113.10/32"]
 
 # Istio ingress gateway Service와 동일한 값을 유지한다.

@@ -9,29 +9,33 @@ Public NLB와 Istio ingress gateway 사이의 AWS 자원을 관리한다.
 - TCP 80 listener
 - Istio Gateway NodePort용 Target Group
 - AWS Worker Target 등록
-- 선택형 Route53 Alias Record
+- 선택형 ACM 인증서와 Route53 Alias Record
 - 선택형 cert-manager DNS-01 IAM Role
 
-TLS는 NLB가 아니라 Istio Gateway에서 종료한다. NLB는 TCP를 그대로 전달한다.
+현재 TLS는 ACM 인증서를 사용하는 NLB에서 종료하고, VPC 내부의 Istio Gateway
+HTTP NodePort로 전달한다.
 
 ## 공개 범위
 
 `allowed_ingress_cidrs`에 나열한 Source만 NLB에 도달한다. 기본값이 없으므로
 값을 넣지 않으면 apply가 실패한다.
 
-현재 audio-gateway에는 TLS server 블록이 없고 audio-api는
-`AUTH_MODE=development` 상태다. 요청이 평문으로 오가고 `X-Cantaloupe-Subject`
-헤더만으로 인증을 통과하므로, **Source CIDR 제한이 유일한 접근 통제다.**
-`0.0.0.0/0`은 변수 검증에서 거부한다.
+audio-api는 `AUTH_MODE=development` 상태이므로 `0.0.0.0/0`은 기본적으로
+거부한다. `apps/audio`의 공개 조회 정책이 먼저 배포되어 아래 경계를 보장할 때만
+`public_read_only_access = true`와 전체 공개 CIDR을 함께 사용한다.
 
-Cognito JWT 검증과 Gateway TLS가 들어오면 그때 이 제한을 완화한다.
+- Gateway에서 외부 `X-Cantaloupe-Subject` 제거
+- Gateway에서 `GET`·`HEAD`만 허용
+- 공개 카탈로그와 공개 음원 상세·재생만 외부 제공
 
-## 443을 열지 않는 이유
+업로드·완료 처리·공개 범위 변경은 Keycloak OIDC 검증 전까지 외부에서 차단한다.
 
-audio-gateway의 `servers`가 HTTP 80 하나뿐이라 Envoy는 443을 바인딩하지 않는다.
-NLB Health Check는 32021을 보므로 443 Target Group을 만들면 Target이 healthy로
-표시된 채 443 요청만 조용히 끊긴다. Gateway에 TLS server와 인증서가 생긴 뒤에
-listener와 Target Group을 함께 추가한다.
+## TLS 종료 경계
+
+Self-managed Kubernetes에 IAM OIDC Provider가 없어 cert-manager DNS-01용 Pod IAM을
+사용하지 않는다. ACM은 클러스터 외부에서 인증서를 발급하고 자동 갱신하므로 현재
+구성에서는 NLB가 443 TLS Listener를 소유한다. NLB와 Worker 사이는 Security
+Group으로 제한된 VPC 내부 HTTP 구간이다.
 
 ## 사전 조건
 
@@ -49,7 +53,7 @@ Health  32021 -> /healthz/ready
 ```bash
 cp terraform/aws/edge/terraform.tfvars.example terraform/aws/edge/terraform.tfvars
 # terraform.tfvars의 AWS 계정 ID와 관리 태그 값을 실제 값으로 교체
-# allowed_ingress_cidrs는 접속할 단말의 공인 IP로 교체한다
+# 공개 조회 정책이 없으면 allowed_ingress_cidrs를 접속 단말의 /32로 교체한다
 curl -s https://checkip.amazonaws.com
 
 terraform -chdir=terraform/aws/edge init -reconfigure

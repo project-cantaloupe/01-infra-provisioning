@@ -33,6 +33,11 @@ output "allowed_ingress_cidrs" {
   value       = sort(var.allowed_ingress_cidrs)
 }
 
+output "public_read_only_access" {
+  description = "Whether the NLB open internet CIDR relies on the Istio public read-only boundary"
+  value       = var.public_read_only_access
+}
+
 output "public_host" {
   description = "Configured public host or null when the Route53 record is disabled"
   value       = var.create_dns_record ? var.public_host : null

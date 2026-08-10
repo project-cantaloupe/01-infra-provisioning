@@ -89,7 +89,7 @@ run "nlb_to_istio_contract" {
   }
 }
 
-# AUTH_MODE=development에서 전체 공개를 막는 방어선이 실제로 동작하는지 확인한다.
+# Istio 공개 조회 경계 없이 전체 공개를 막는 방어선이 동작하는지 확인한다.
 run "rejects_open_internet_ingress" {
   command = plan
 
@@ -98,6 +98,44 @@ run "rejects_open_internet_ingress" {
   }
 
   expect_failures = [var.allowed_ingress_cidrs]
+}
+
+# 공개 조회 경계를 명시하면 전체 인터넷 Source를 사용할 수 있다.
+run "allows_open_internet_for_public_read_only_access" {
+  command = plan
+
+  variables {
+    public_read_only_access = true
+    allowed_ingress_cidrs   = ["0.0.0.0/0"]
+  }
+
+  override_data {
+    target = data.terraform_remote_state.network
+    values = {
+      outputs = {
+        vpc_id                   = "vpc-00000000000000000"
+        public_subnet_ids        = ["subnet-00000000000000000"]
+        worker_security_group_id = "sg-00000000000000000"
+      }
+    }
+  }
+
+  override_data {
+    target = data.terraform_remote_state.compute
+    values = {
+      outputs = {
+        worker_node_metadata = []
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      length(aws_vpc_security_group_ingress_rule.audio_nlb_http) == 1
+      && aws_vpc_security_group_ingress_rule.audio_nlb_http["0.0.0.0/0"].cidr_ipv4 == "0.0.0.0/0"
+    )
+    error_message = "Public read-only access must allow the configured open internet CIDR."
+  }
 }
 
 run "rejects_empty_ingress" {

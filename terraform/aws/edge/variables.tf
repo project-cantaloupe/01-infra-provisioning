@@ -34,9 +34,18 @@ variable "data_class" {
   }
 }
 
+# 외부 요청을 공개 조회 전용으로 제한하는 Istio 정책의 배포 여부를 명시한다.
+# Terraform은 Kubernetes 상태를 직접 소유하지 않으므로 운영자가 이 계약을
+# 확인한 뒤에만 true로 바꾼다.
+variable "public_read_only_access" {
+  description = "Whether the Istio public read-only boundary is deployed before opening the NLB"
+  type        = bool
+  default     = false
+}
+
 # NLB에 도달할 수 있는 Source를 명시적으로 좁힌다. 기본값을 두지 않는 이유는
-# 공개 범위를 무의식적으로 상속하지 않게 하려는 것이다. 값은 terraform.tfvars에
-# 넣고, 재택·모바일 등으로 공인 IP가 바뀌면 그때 갱신한다.
+# 공개 범위를 무의식적으로 상속하지 않게 하려는 것이다. 공개 조회 정책이 없으면
+# 재택·모바일 공인 IP를 /32 단위로 등록한다.
 variable "allowed_ingress_cidrs" {
   description = "Source IPv4 CIDRs allowed to reach the audio NLB over HTTP"
   type        = list(string)
@@ -51,11 +60,14 @@ variable "allowed_ingress_cidrs" {
     error_message = "Every allowed_ingress_cidrs entry must be a valid CIDR, for example 203.0.113.10/32."
   }
 
-  # AUTH_MODE=development는 X-Cantaloupe-Subject 헤더만으로 인증을 통과시킨다.
-  # 그 상태로 /0을 열면 누구나 Presigned URL을 발급받을 수 있다.
+  # AUTH_MODE=development에서 /0을 열려면 Gateway가 신뢰할 수 없는 개발용
+  # 인증 헤더를 제거하고 변경 메서드를 거부해야 한다.
   validation {
-    condition     = !contains([for cidr in var.allowed_ingress_cidrs : try(split("/", cidr)[1], "")], "0")
-    error_message = "allowed_ingress_cidrs must not open the NLB to the whole internet while AUTH_MODE is development."
+    condition = (
+      var.public_read_only_access
+      || !contains([for cidr in var.allowed_ingress_cidrs : try(split("/", cidr)[1], "")], "0")
+    )
+    error_message = "Opening the NLB to the whole internet requires public_read_only_access=true."
   }
 }
 

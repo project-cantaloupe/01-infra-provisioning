@@ -9,10 +9,9 @@ resource "aws_security_group" "audio_nlb" {
   }
 }
 
-# audio-api는 AUTH_MODE=development 동안 X-Cantaloupe-Subject 헤더를 그대로
-# 신뢰한다. TLS가 붙어도 인증이 없다는 사실은 바뀌지 않으므로, Source CIDR
-# 제한은 여전히 유일한 접근 통제다. Keycloak OIDC 검증이 API에 들어가기
-# 전까지 이 목록을 넓히지 않는다.
+# AUTH_MODE=development에서 전체 공개는 Istio 공개 조회 정책과 함께 사용한다.
+# Gateway가 X-Cantaloupe-Subject를 제거하고 GET·HEAD만 허용하므로 외부 사용자는
+# 공개 음원만 조회할 수 있다. 정책이 없으면 /32 Source CIDR만 사용한다.
 resource "aws_vpc_security_group_ingress_rule" "audio_nlb_http" {
   for_each = toset(var.allowed_ingress_cidrs)
 
