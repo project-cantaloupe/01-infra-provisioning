@@ -94,3 +94,27 @@ resource "aws_iam_role_policy" "oidc_client_secrets" {
   role   = data.aws_iam_role.worker_node.name
   policy = data.aws_iam_policy_document.oidc_client_secrets.json
 }
+
+# Harbor. 위 Grafana 와 같은 경로를 탄다 — 접두사를 공유하므로 IAM 은
+# 그대로다. **접두사를 모은 값이 여기서 처음 회수된다.**
+resource "aws_secretsmanager_secret" "harbor_oidc" {
+  name        = "${local.oidc_secret_prefix}/harbor"
+  description = "Harbor OIDC client secret (realm cantaloupe). terraform/keycloak 이 소유한다."
+
+  recovery_window_in_days = 7
+
+  tags = {
+    Project   = "cantaloupe"
+    ManagedBy = "terraform"
+    Stack     = "keycloak"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "harbor_oidc" {
+  secret_id = aws_secretsmanager_secret.harbor_oidc.id
+
+  secret_string = jsonencode({
+    client_id     = keycloak_openid_client.harbor.client_id
+    client_secret = keycloak_openid_client.harbor.client_secret
+  })
+}
