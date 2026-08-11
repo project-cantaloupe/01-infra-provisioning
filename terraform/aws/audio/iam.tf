@@ -291,36 +291,47 @@ resource "aws_iam_role_policy" "finops_cloudwatch_read" {
   policy = data.aws_iam_policy_document.finops_cloudwatch_read[0].json
 }
 
-# S3 저장량 수집기는 CloudWatch의 일 단위 BucketSizeBytes 대신 현재 객체 목록을
-# 조회한다. 객체 본문은 읽지 않으며 Audio Pipeline이 소유한 두 prefix만 열어
-# Node Instance Profile 권한의 노출 범위를 제한한다.
+# S3 FinOps 수집기는 현재 객체와 비현재 버전을 집계하고 실제 Bucket 제어가
+# Terraform 기대값과 일치하는지 검증한다. 객체 본문과 Bucket Policy 본문은 읽지
+# 않으며 Audio Pipeline 전용 두 Bucket의 목록 및 설정 조회만 허용한다.
 data "aws_iam_policy_document" "finops_s3_list" {
   count = var.enable_node_role_policy ? 1 : 0
 
   statement {
     sid       = "ListQuarantineObjectsForFinOps"
     effect    = "Allow"
-    actions   = ["s3:ListBucket"]
+    actions = [
+      "s3:ListBucket",
+      "s3:ListBucketVersions",
+    ]
     resources = [aws_s3_bucket.quarantine.arn]
-
-    condition {
-      test     = "StringLike"
-      variable = "s3:prefix"
-      values   = ["incoming", "incoming/", "incoming/*"]
-    }
   }
 
   statement {
     sid       = "ListTranscodeObjectsForFinOps"
     effect    = "Allow"
-    actions   = ["s3:ListBucket"]
+    actions = [
+      "s3:ListBucket",
+      "s3:ListBucketVersions",
+    ]
     resources = [aws_s3_bucket.transcode.arn]
+  }
 
-    condition {
-      test     = "StringLike"
-      variable = "s3:prefix"
-      values   = ["audios", "audios/", "audios/*"]
-    }
+  statement {
+    sid    = "ReadAudioBucketControlsForFinOps"
+    effect = "Allow"
+    actions = [
+      "s3:GetBucketVersioning",
+      "s3:GetLifecycleConfiguration",
+      "s3:GetEncryptionConfiguration",
+      "s3:GetBucketPublicAccessBlock",
+      "s3:GetBucketPolicyStatus",
+      "s3:GetBucketOwnershipControls",
+    ]
+    resources = [
+      aws_s3_bucket.quarantine.arn,
+      aws_s3_bucket.transcode.arn,
+    ]
   }
 }
 
