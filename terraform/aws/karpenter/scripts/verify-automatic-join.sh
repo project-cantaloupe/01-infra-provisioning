@@ -171,4 +171,8 @@ ssh \
   -o StrictHostKeyChecking=accept-new \
   -o UserKnownHostsFile="${work_directory}/known_hosts" \
   "ubuntu@${node_ip}" \
-  "sudo test -s /var/lib/cntlp/bootstrap-complete && sudo cat /var/lib/cntlp/bootstrap-complete"
+  "sudo test -s /var/lib/cntlp/bootstrap-complete \
+    && sudo grep -Fq -- '--image-credential-provider-config=/etc/kubelet-credential-provider/ecr-credential-provider.yaml' /var/lib/kubelet/kubeadm-flags.env \
+    && sudo grep -Fq -- '--image-credential-provider-bin-dir=/usr/local/libexec/kubelet-credential-providers' /var/lib/kubelet/kubeadm-flags.env \
+    && sudo cat /var/lib/cntlp/bootstrap-complete \
+    && printf 'ecr_credential_provider=configured\\n'"

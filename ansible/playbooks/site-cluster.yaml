@@ -9,6 +9,9 @@
 - name: Calico CNI 구성
   ansible.builtin.import_playbook: site-cni.yaml
 
+- name: AWS Worker ECR credential provider 구성
+  ansible.builtin.import_playbook: site-aws-ecr-credential-provider.yaml
+
 - name: Worker 가입
   ansible.builtin.import_playbook: site-workers.yaml
 

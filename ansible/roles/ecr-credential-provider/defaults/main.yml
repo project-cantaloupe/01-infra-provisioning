@@ -1,0 +1,21 @@
+---
+# Kubernetes 1.36 계열과 같은 cloud-provider-aws 정식 릴리스를 고정한다.
+# v1.36.1은 이전에 검토한 v1.36.0-13-g7656c21과 같은 commit을 가리키지만,
+# 정식 tag 이름으로 빌드된 공식 바이너리와 SHA-256을 사용한다.
+ecr_credential_provider_version: v1.36.1
+ecr_credential_provider_sha256: 59a6fc141dc08cd0661d885d2cf8993df42f62cc2bd7a08902dde63f47e0b384
+ecr_credential_provider_architecture: amd64
+ecr_credential_provider_download_url: >-
+  https://storage.googleapis.com/k8s-staging-provider-aws/releases/
+  {{ ecr_credential_provider_version }}/linux/
+  {{ ecr_credential_provider_architecture }}/
+  ecr-credential-provider-linux-{{ ecr_credential_provider_architecture }}
+
+ecr_credential_provider_bin_directory: /usr/local/libexec/kubelet-credential-providers
+ecr_credential_provider_binary: >-
+  {{ ecr_credential_provider_bin_directory }}/ecr-credential-provider
+ecr_credential_provider_config_directory: /etc/kubelet-credential-provider
+ecr_credential_provider_config: >-
+  {{ ecr_credential_provider_config_directory }}/ecr-credential-provider.yaml
+ecr_credential_provider_kubeadm_flags: /var/lib/kubelet/kubeadm-flags.env
+ecr_credential_provider_default_flags: /etc/default/kubelet

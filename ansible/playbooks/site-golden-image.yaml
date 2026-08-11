@@ -19,5 +19,6 @@
     - role: kubeadm-common
     - role: vpn-mesh
     - role: aws-cli
+    - role: ecr-credential-provider
     - role: karpenter-bootstrap
     - role: karpenter-image

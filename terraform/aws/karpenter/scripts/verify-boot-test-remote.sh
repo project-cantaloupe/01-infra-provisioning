@@ -30,6 +30,13 @@ test "$(kubelet --version | awk '{print $2}')" = "v1.36.3"
 test -x /usr/local/sbin/cntlp-worker-bootstrap
 bash -n /usr/local/sbin/cntlp-worker-bootstrap
 aws --version 2>&1 | grep -Fq 'aws-cli/2.36.18'
+test -x /usr/local/libexec/kubelet-credential-providers/ecr-credential-provider
+/usr/local/libexec/kubelet-credential-providers/ecr-credential-provider --version \
+  | grep -Fq 'v1.36.1'
+grep -Fq 'apiVersion: kubelet.config.k8s.io/v1' \
+  /etc/kubelet-credential-provider/ecr-credential-provider.yaml
+grep -Fq '*.dkr.ecr.*.amazonaws.com' \
+  /etc/kubelet-credential-provider/ecr-credential-provider.yaml
 
 printf 'hostname=%s\n' "$(hostname)"
 printf 'machine_id=regenerated\n'
@@ -40,6 +47,7 @@ printf 'containerd=%s\n' "$(containerd --version)"
 printf 'kubeadm=%s\n' "$(kubeadm version -o short)"
 printf 'kubelet=%s\n' "$(kubelet --version | awk '{print $2}')"
 printf 'aws_cli=%s\n' "$(aws --version 2>&1 | awk '{print $1}')"
+printf 'ecr_credential_provider=v1.36.1\n'
 printf 'bootstrap_runner=ready\n'
 printf 'kubelet_active=%s\n' "$(systemctl is-active kubelet || true)"
 printf 'tailscale=%s\n' "$(tailscale version | head -1)"

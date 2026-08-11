@@ -11,6 +11,7 @@ Karpenter가 생성할 Worker의 공통 OS와 패키지를 AMI에 미리 설치�
 - Kubernetes 커널 모듈, sysctl, swap 비활성화
 - Tailscale 에이전트와 노드 방화벽
 - AWS CLI v2 2.36.18
+- kubelet ECR credential provider와 SHA-256 고정 설정
 - Secret 값을 포함하지 않는 Worker bootstrap 실행기
 
 ## 포함하지 않는 항목
@@ -60,6 +61,11 @@ packer build \
 `validate`는 AWS 리소스를 만들지 않는다. `build`는 임시 `t3.small` EC2와 30 GiB
 gp3를 사용한 뒤 EC2를 종료하고, AMI와 EBS Snapshot을 남긴다. 빌드 실패 시에도
 EC2와 EBS가 남지 않았는지 태그 `Name=cntlp-aws-cicd-packer-builder`로 확인한다.
+
+Boot Test는 provider 바이너리·버전·설정 파일을 확인한다. 자동 가입 검증에서는
+실행 중인 kubelet의 `kubeadm-flags.env`에 두 credential-provider 인자가 모두
+있는지도 확인한다. 최종 ECR 검증은 실제 private Audio image Pod가
+`ImagePullBackOff` 없이 Ready가 되는 것으로 완료한다.
 
 ## 삭제 경계
 
