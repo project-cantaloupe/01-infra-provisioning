@@ -21,6 +21,19 @@ data "aws_secretsmanager_secret_version" "vault_oidc" {
 
 locals {
   oidc = jsondecode(data.aws_secretsmanager_secret_version.vault_oidc.secret_string)
+
+  # ── 이름을 리터럴로 고정해 순환을 끊는다 ──────────────────────
+  #
+  # 백엔드는 role 의 이름을 알아야 하고(`default_role`), role 은 백엔드의
+  # 경로를 알아야 한다(`backend`). 서로를 참조하면 terraform 이
+  # `Cycle: vault_jwt_auth_backend_role.human, vault_jwt_auth_backend.oidc`
+  # 로 거절한다 — 무엇을 먼저 만들지 정할 수 없기 때문이다.
+  #
+  # **둘 다 아는 값을 바깥에 두면 참조가 사라진다.** 이 두 값은 어차피
+  # 리소스가 만들어낸 것이 아니라 우리가 정한 이름이라 local 이 맞는 자리다.
+  # 순서는 role 쪽의 `depends_on` 이 대신 보장한다.
+  oidc_path      = "oidc"
+  oidc_role_name = "human"
 }
 
 # ── OIDC 백엔드 ────────────────────────────────────────────────
@@ -30,15 +43,16 @@ locals {
 # 등록 주소도 같이 고쳐야 하고, 안 고치면 `invalid redirect_uri` 가 난다.
 resource "vault_jwt_auth_backend" "oidc" {
   type        = "oidc"
-  path        = "oidc"
+  path        = local.oidc_path
   description = "Human auth via Keycloak (replaces userpass)"
 
   oidc_discovery_url = var.keycloak_issuer
   oidc_client_id     = local.oidc.client_id
   oidc_client_secret = local.oidc.client_secret
 
-  # UI 의 로그인 화면에 기본으로 뜰 역할.
-  default_role = vault_jwt_auth_backend_role.human.role_name
+  # UI 의 로그인 화면에 기본으로 뜰 역할. 리소스가 아니라 local 을 본다 —
+  # 위의 순환 설명 참고.
+  default_role = local.oidc_role_name
 
   # ⚠️ **`oidc_discovery_ca_pem` 을 쓰지 않는다.** 발행자가 공개 CA(Let's
   # Encrypt)라 시스템 신뢰 저장소로 충분하다. 넣으면 그 루트가 바뀌는 날
@@ -63,9 +77,14 @@ resource "vault_jwt_auth_backend" "oidc" {
 # `oidc-pneuma` 로 **같은 사람으로 읽히는 이름이 이어진다** — 실계정을
 # Vault 의 userpass 계정과 같은 이름으로 만든 이유가 이것이다.
 resource "vault_jwt_auth_backend_role" "human" {
-  backend   = vault_jwt_auth_backend.oidc.path
-  role_name = "human"
+  # ⚠️ **리소스가 아니라 local 을 본다.** 참조로 두면 백엔드의 `default_role`
+  # 과 맞물려 순환이 된다. 대신 순서를 `depends_on` 이 명시한다 — 마운트가
+  # 없는데 역할을 쓰면 404 다.
+  backend   = local.oidc_path
+  role_name = local.oidc_role_name
   role_type = "oidc"
+
+  depends_on = [vault_jwt_auth_backend.oidc]
 
   user_claim   = "preferred_username"
   groups_claim = "groups"
