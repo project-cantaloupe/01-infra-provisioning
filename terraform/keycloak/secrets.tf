@@ -204,6 +204,30 @@ resource "aws_secretsmanager_secret_version" "monitoring_gateway_oidc" {
   })
 }
 
+# Audio FinOps CronJob의 Client Credentials. Git에는 값을 두지 않고 apps
+# Namespace의 ExternalSecret이 이 JSON의 두 필드만 가져간다.
+resource "aws_secretsmanager_secret" "audio_finops_oidc" {
+  name        = "${local.oidc_secret_prefix}/audio-finops"
+  description = "Audio FinOps service client secret (realm cantaloupe). terraform/keycloak 이 소유한다."
+
+  recovery_window_in_days = 7
+
+  tags = {
+    Project   = "cantaloupe"
+    ManagedBy = "terraform"
+    Stack     = "keycloak"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "audio_finops_oidc" {
+  secret_id = aws_secretsmanager_secret.audio_finops_oidc.id
+
+  secret_string = jsonencode({
+    client_id     = keycloak_openid_client.audio_finops.client_id
+    client_secret = keycloak_openid_client.audio_finops.client_secret
+  })
+}
+
 # ── Grafana 로컬 admin — OIDC 가 아닌 시크릿이 여기 있는 이유 ──────
 #
 # **이 스택은 OIDC 클라이언트 시크릿을 소유한다.** Grafana 의 로컬 admin

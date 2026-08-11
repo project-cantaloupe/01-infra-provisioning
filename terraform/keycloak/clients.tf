@@ -523,3 +523,36 @@ resource "keycloak_openid_audience_protocol_mapper" "monitoring_gateway" {
   add_to_id_token     = false
   add_to_access_token = true
 }
+
+# ── Audio FinOps 비대화형 Runner ──────────────────────────────
+#
+# 공개 Audio Web의 사용자 계정 기능은 의도적으로 꺼져 있다. 브라우저 로그인과
+# 분리해, 클러스터 내부의 FinOps CronJob만 Client Credentials로 짧은 Access
+# Token을 발급받는다. 사용자 비밀번호나 개발용 Subject Header는 사용하지 않는다.
+resource "keycloak_openid_client" "audio_finops" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "audio-finops"
+  name      = "Audio FinOps Load Runner"
+  enabled   = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = false
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = true
+}
+
+# Audio API는 aud=audio-api만 받는다. 공개 Web용 audio-api Client는 삭제됐으므로
+# 다른 Client 리소스를 다시 만들지 않고 전용 Runner Token에 Custom Audience만
+# 넣는다.
+resource "keycloak_openid_audience_protocol_mapper" "audio_finops_api" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.audio_finops.id
+  name      = "audio-api-audience"
+
+  included_custom_audience = "audio-api"
+
+  add_to_id_token     = false
+  add_to_access_token = true
+}

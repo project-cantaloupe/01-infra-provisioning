@@ -18,3 +18,12 @@ output "groups" {
   description = "RBAC·정책의 주체로 그대로 쓰는 이름들"
   value       = sort(keys(local.groups))
 }
+
+output "audio_finops_oidc" {
+  description = "Audio FinOps Runner의 비민감 OIDC 연결 값"
+  value = {
+    issuer_url   = "https://auth.echoprism.cloud/realms/${keycloak_realm.cantaloupe.realm}"
+    client_id    = keycloak_openid_client.audio_finops.client_id
+    api_audience = "audio-api"
+  }
+}
