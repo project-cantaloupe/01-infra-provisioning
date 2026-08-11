@@ -10,8 +10,9 @@ run "core_audio_data_path" {
     data_class          = "user-audio"
     web_allowed_origins = ["https://audio.example.com"]
 
-    enable_cloudfront   = false
-    enable_workload_iam = false
+    enable_cloudfront       = false
+    enable_workload_iam     = false
+    enable_node_role_policy = false
   }
 
   assert {
@@ -93,6 +94,7 @@ run "security_delivery_and_workload_iam" {
     enable_cloudfront          = true
     cloudfront_public_key_path = "tests/fixtures/cloudfront-public-key.pub"
     enable_workload_iam        = true
+    enable_node_role_policy    = false
     cluster_oidc_provider_arn  = "arn:aws:iam::123456789012:oidc-provider/k8s.example.com"
     cluster_oidc_issuer_url    = "https://k8s.example.com"
   }
@@ -164,6 +166,7 @@ run "keda_controller_queue_read" {
     web_allowed_origins = ["https://audio.example.com"]
 
     enable_keda_controller_policy = true
+    enable_node_role_policy       = false
   }
 
   override_data {
@@ -188,5 +191,78 @@ run "keda_controller_queue_read" {
       && aws_iam_role_policy.keda_sqs_read[0].role == "cntlp-aws-control-plane-node"
     )
     error_message = "KEDA must receive a separate policy on the control plane role."
+  }
+}
+
+run "finops_s3_current_object_list" {
+  command = plan
+
+  variables {
+    aws_account_id      = "123456789012"
+    aws_region          = "ap-northeast-2"
+    owner               = "team-audio"
+    data_class          = "user-audio"
+    web_allowed_origins = ["https://audio.example.com"]
+
+    enable_node_role_policy = true
+  }
+
+  override_data {
+    target = data.terraform_remote_state.compute[0]
+    values = {
+      outputs = {
+        worker_role_name = "cntlp-aws-worker-node"
+      }
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.audio_api[0]
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.audio_events[0]
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.audio_transcode[0]
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.audio_node[0]
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.finops_s3_list[0]
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  override_data {
+    target = data.aws_iam_policy_document.finops_cloudwatch_read[0]
+    values = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  assert {
+    condition = (
+      aws_iam_role_policy.finops_s3_list[0].name == "cntlp-aws-finops-s3-list"
+      && aws_iam_role_policy.finops_s3_list[0].role == "cntlp-aws-worker-node"
+    )
+    error_message = "The S3 collector must receive a separate read-only policy on the AWS worker role."
   }
 }

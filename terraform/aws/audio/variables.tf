@@ -216,12 +216,13 @@ check "quarantine_transitions_are_ordered" {
   }
 }
 
-# Workload IAM(OIDC) 대신 Node Instance Profile을 쓰는 동안, Audio 권한 합집합을
-# Compute Stack의 Worker Role에 붙일지 결정한다. 권한 격리 단위가 ServiceAccount가
-# 아니라 Node가 되는 한계가 있으며 Calico NetworkPolicy로 불필요한 Pod의 IMDS
-# 접근을 차단해 보완한다. 운영 환경에서는 enable_workload_iam으로 전환한다.
+# Workload IAM(OIDC) 대신 Node Instance Profile을 쓰는 동안, Audio Workload와
+# Node-bound FinOps 수집 권한을 Compute Stack의 Worker Role에 붙일지 결정한다.
+# 권한 격리 단위가 ServiceAccount가 아니라 Node가 되는 한계가 있으며 Calico
+# NetworkPolicy로 불필요한 Pod의 IMDS 접근을 차단해 보완한다. 운영 환경에서는
+# enable_workload_iam과 전용 수집기 자격증명으로 전환한다.
 variable "enable_node_role_policy" {
-  description = "Whether to attach the union of audio workload permissions to the compute worker node role"
+  description = "Whether to attach audio workload and node-bound FinOps collector permissions to the compute worker role"
   type        = bool
   default     = false
 }
