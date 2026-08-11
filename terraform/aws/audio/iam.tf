@@ -265,8 +265,8 @@ resource "aws_iam_role_policy" "keda_sqs_read" {
   policy = data.aws_iam_policy_document.keda_sqs_read[0].json
 }
 
-# CloudWatch Exporter는 AWS service Worker에서 실행하고 EC2 Instance Profile의
-# 단기 자격증명을 사용한다. S3 객체나 로그를 읽지 않고 CloudWatch metric과
+# SQS CloudWatch Exporter는 AWS service Worker에서 실행하고 EC2 Instance
+# Profile의 단기 자격증명을 사용한다. S3 객체나 로그를 읽지 않고 CloudWatch
 # metric만 조회한다.
 data "aws_iam_policy_document" "finops_cloudwatch_read" {
   count = var.enable_node_role_policy ? 1 : 0
@@ -289,4 +289,45 @@ resource "aws_iam_role_policy" "finops_cloudwatch_read" {
   name   = "cntlp-finops-cloudwatch-read"
   role   = data.terraform_remote_state.compute[0].outputs.worker_role_name
   policy = data.aws_iam_policy_document.finops_cloudwatch_read[0].json
+}
+
+# S3 저장량 수집기는 CloudWatch의 일 단위 BucketSizeBytes 대신 현재 객체 목록을
+# 조회한다. 객체 본문은 읽지 않으며 Audio Pipeline이 소유한 두 prefix만 열어
+# Node Instance Profile 권한의 노출 범위를 제한한다.
+data "aws_iam_policy_document" "finops_s3_list" {
+  count = var.enable_node_role_policy ? 1 : 0
+
+  statement {
+    sid       = "ListQuarantineObjectsForFinOps"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.quarantine.arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["incoming", "incoming/", "incoming/*"]
+    }
+  }
+
+  statement {
+    sid       = "ListTranscodeObjectsForFinOps"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.transcode.arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["audios", "audios/", "audios/*"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "finops_s3_list" {
+  count = var.enable_node_role_policy ? 1 : 0
+
+  name   = "cntlp-aws-finops-s3-list"
+  role   = data.terraform_remote_state.compute[0].outputs.worker_role_name
+  policy = data.aws_iam_policy_document.finops_s3_list[0].json
 }
