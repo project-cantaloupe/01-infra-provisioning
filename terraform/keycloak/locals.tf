@@ -17,7 +17,7 @@ locals {
   groups = {
     "platform-admin" = "클러스터·Vault 전권. 지금은 1명"
     "apps"           = "오디오 서비스"
-    "devops"         = "CI/CD — ArgoCD·Jenkins·Harbor"
+    "devops"         = "CI/CD — ArgoCD·Harbor"
     "finops"         = "비용·모니터링·거버넌스"
     "secops"         = "보안 — Vault·Keycloak·Kyverno·Falco"
   }
