@@ -27,33 +27,43 @@ tailscale_serve_expected_dns_name: cntlp-gcp-wk-01.tail270b85.ts.net
 # 재조인을 요구해 되돌리기가 비싸다.
 
 tailscale_serve_routes:
-  # OpenCost UI. 루트를 쓰는 것은 기존 설정 그대로다.
+  # ── 루트는 인증 게이트다 (2026-08-11 변경) ─────────────────────
+  #
+  # 전에는 `/` → OpenCost, `/prometheus` → Prometheus 로 **두 UI 를 직접**
+  # 가리켰다. 둘 다 로그인 화면이 없는 UI 라서 tailnet 참여자 누구나
+  # 읽을 수 있었다 → tasks/.../015_sso-loose-ends.md A1
+  #
+  # 지금은 monitoring-gateway(oauth2-proxy)가 루트에 서고 경로 분기를
+  # 프록시가 한다. UI 쪽 NodePort 는 없앴다.
+  #
+  # ⚠️ **접두사 없이 루트에 두는 것이 설계의 핵심이다.** tailscale 은
+  # `--set-path` 접두사를 벗겨서 백엔드에 넘기는데, 그러면 프록시가
+  # 자기 접두사를 몰라서 **로그인 뒤 착지 URL 에서 그것을 잃는다**
+  # (로깅 게이트에서 실제로 난 버그다). 루트면 안팎의 좌표계가 같다.
+  #
+  # ⚠️ **check 를 `/` 로 두지 않는다.** 미인증 요청은 302 라서 롤의
+  # HEAD 검사가 통과는 하지만, 프록시가 죽었는지 살았는지 못 가린다.
+  # `/ping` 이 oauth2-proxy 의 인증 없는 헬스 경로다.
   - path: /
-    backend: http://127.0.0.1:30990
-    check: http://127.0.0.1:30990/
+    backend: http://127.0.0.1:30919
+    check: http://127.0.0.1:30919/ping
 
   # Grafana. `grafana.ini` 의 `root_url` + `serve_from_sub_path: true` 가
   # 같은 경로를 알고 있어야 한다
   # (02-k8s-manifests platform/gcp/kube-prometheus-stack/values.yaml).
   #
+  # ⚠️ **게이트 뒤로 넣지 않는다.** Grafana 는 자체 OIDC 로그인이 있고
+  # 그룹별 역할(Admin/Editor/Viewer)까지 가른다. 프록시를 앞에 두면
+  # 인증이 두 번이 되고 역할 구분은 그대로 Grafana 몫이라 얻는 게 없다.
+  #
   # ⚠️ **백엔드 끝에 슬래시를 붙이지 않는다.** 실물이 그렇고 그대로 돌고
-  # 있다. `/grafana/` 로 바꾸면 수렴이 한 번 돌면서 세 경로가 전부 재생성된다
-  # — 얻는 것 없이 UI 가 잠깐 끊긴다.
+  # 있다. `/grafana/` 로 바꾸면 수렴이 한 번 돌면서 경로가 전부 재생성된다.
   - path: /grafana
     backend: http://127.0.0.1:30300/grafana
     check: http://127.0.0.1:30300/grafana/login
 
-  # Prometheus UI. `externalUrl` 이 같은 경로를 안다 (같은 values 파일).
+  # ── `/prometheus` 경로는 없앴다 ────────────────────────────────
   #
-  # ⚠️ **check 가 `/prometheus/` 가 아니라 `/-/ready` 인 것이 핵심이다.**
-  # tailscale 은 `--set-path` 의 접두사를 **벗겨서** 백엔드에 넘긴다.
-  # 즉 Prometheus 는 내부적으로 루트에서 서빙하고 `/prometheus/` 는 404 다
-  # (2026-08-11 노드에서 직접 확인).
-  #
-  # 위의 argocd·grafana 가 백엔드 URL 에 경로를 다시 붙인 이유가 여기 있다 —
-  # 벗겨진 접두사를 되돌려 주는 것이다. 그 앱들은 서브패스에서 서빙하도록
-  # 설정돼 있고(`server.rootpath`, `serve_from_sub_path`), Prometheus 는
-  # 아니라서 되돌리지 않는다.
-  - path: /prometheus
-    backend: http://127.0.0.1:30909
-    check: http://127.0.0.1:30909/-/ready
+  # 위 루트 게이트가 `/prometheus/` 를 받아 프록시 내부에서 업스트림으로
+  # 보낸다. 접두사가 안 벗겨지므로 **Prometheus 쪽도 `routePrefix: /` 에서
+  # `/prometheus` 로 같이 바꿨다** — 한쪽만 바꾸면 404 다.
