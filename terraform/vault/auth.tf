@@ -1,32 +1,18 @@
-# ── 사람용 창구 ─────────────────────────────────────────────────
+# ── 사람용 창구는 여기 없다 ─────────────────────────────────────
 #
-# **임시 시설이다.** CONSTRAINTS.md 는 "UI 인증은 메시 안쪽 Keycloak SSO" 라고
-# 정해뒀는데(decisions/20260728_network-connectivity-and-access) Vault 가
-# Keycloak 보다 먼저 서기 때문에 생긴 공백을 메운다.
+# **`userpass` 를 2026-08-11 에 지웠다.** 그 블록은 "Keycloak 이 서기
+# 전까지의 임시 창구" 라고 스스로 적어 두고 있었고, 그 조건이 끝났다
+# → decisions/20260811_vault-oidc-replaces-userpass.md
 #
-# Keycloak 이 서면 OIDC 로 갈아타고 **이 블록을 지운다.** 그것이 후속 태스크의
-# 완료 조건이다 — 임시 시설이 영구 시설로 굳는 것이 이 종류 작업의 흔한 결말이다.
-resource "vault_auth_backend" "userpass" {
-  type        = "userpass"
-  description = "Transitional human auth; remove after Keycloak OIDC lands"
-
-  tune {
-    default_lease_ttl = "${var.token_ttl_hours}h"
-    max_lease_ttl     = "${var.token_ttl_hours}h"
-    token_type        = "default-service"
-  }
-}
-
-# ── 비밀번호를 terraform 이 정하지 않는다 ───────────────────────
+# 사람 인증은 이제 oidc.tf 하나다. **이 파일에 사람용 백엔드를 다시
+# 만들지 않는다** — 임시 창구가 영구 시설로 굳는 것이 이 종류 작업의
+# 흔한 결말이고, 한 번 그 결말을 피했다.
 #
-# vault_generic_endpoint 로 사용자를 만들 수 있지만 그러면 비밀번호가 tfstate 에
-# 평문으로 남는다. 사람이 CLI 로 만든다 — `password=-` 가 stdin 에서 읽어
-# 셸 히스토리에도 남지 않는다.
+# ⚠️ Keycloak 이 죽으면 Vault 에 사람이 못 들어간다. **그건 폴백이
+# 없다는 뜻이 아니다** — 초기 root 토큰과 recovery key 5조각이 오프라인
+# 봉투에 있다. 폴백을 상시 켜진 두 번째 인증 경로로 두지 않는 것이
+# 여기서의 선택이다 → references/20260801_infra-05-vault-ops.md
 #
-#   vault write auth/userpass/users/pneuma password=- policies=pneuma
-#
-# 정책 이름은 var.human_username 과 같다 (policies.tf).
-
 # ── 기계용 창구 ─────────────────────────────────────────────────
 #
 # AppRole 이 값 둘로 나뉘어 있는 것은 **배달 경로를 가를 수 있어서**다.

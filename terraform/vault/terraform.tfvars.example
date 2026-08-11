@@ -4,9 +4,6 @@
 # terraform 이 만들지 않는다 — 만들면 tfstate 에 평문으로 남는다.
 # 주소와 토큰은 환경변수로 온다 (VAULT_ADDR / VAULT_TOKEN).
 
-# userpass 계정 이름. Keycloak OIDC 로 갈아탈 때 이 창구는 지운다.
-human_username = "pneuma"
-
 # 사람 토큰 수명(시간). scripts/cntlp-env.sh 의 `ssh-add -t` 와 같아야 한다.
 token_ttl_hours = 8
 

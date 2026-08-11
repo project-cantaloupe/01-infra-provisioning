@@ -27,9 +27,13 @@ Vault 를 설정하려면 Vault 토큰이 필요하다. **초기 root 토큰으�
 |---|---|
 | `vault_mount.secret` | KV v2, 버전 10개 보관 |
 | `vault_policy` × 3 | `human.hcl` · `terraform-onp.hcl` · `ansible-onp.hcl` |
-| `vault_auth_backend.userpass` | 사람. **Keycloak 오면 지운다** |
+| `vault_jwt_auth_backend.oidc` | 사람. Keycloak OIDC (2026-08-11 부터) |
+| `vault_identity_group` × 2 | `platform-admin` · `secops` → `human` 정책 |
 | `vault_auth_backend.approle` | 기계. role 2개 |
 | `vault_audit.file` | 파일 감사 장치 |
+
+`userpass` 는 **없다.** 2026-08-11 에 지웠다 —
+→ `decisions/20260811_vault-oidc-replaces-userpass.md`
 
 ## 만들지 않는 것 — 전부 같은 이유다
 
@@ -39,7 +43,7 @@ Vault 를 설정하려면 Vault 토큰이 필요하다. **초기 root 토큰으�
 |---|---|
 | 시크릿 값 (`vault_kv_secret_v2`) | 사람이 `vault kv put` |
 | `secret_id` | 사람이 `vault write -f .../secret-id` |
-| userpass 비밀번호 | 사람이 `vault write ... password=-` |
+| 사람 계정 | **Keycloak realm 이 갖는다.** 여기는 그룹만 안다 |
 
 `terraform output next_steps` 가 명령을 그대로 뱉는다.
 

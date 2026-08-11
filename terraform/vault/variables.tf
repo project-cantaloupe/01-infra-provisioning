@@ -1,13 +1,8 @@
-variable "human_username" {
-  description = "userpass account name for the operator; a transitional auth path until Keycloak OIDC lands"
-  type        = string
-  default     = "pneuma"
-
-  validation {
-    condition     = can(regex("^[a-z0-9]+(-[a-z0-9]+)*$", var.human_username))
-    error_message = "human_username must use lowercase kebab-case."
-  }
-}
+# ── `human_username` 은 2026-08-11 에 지웠다 ────────────────────
+#
+# userpass 계정 이름을 담던 변수다. 사람 계정이 Keycloak realm 으로
+# 옮겨가면서 이 스택이 사람 이름을 알 이유가 없어졌다 — 아는 것은
+# **그룹**뿐이고 그건 oidc.tf 가 갖는다.
 
 # 사람 토큰의 수명. **scripts/cntlp-env.sh 의 `ssh-add -t` 와 같은 값이어야
 # 한다.** 다르면 한쪽이 살아 있는데 다른 쪽이 죽어 원인을 헷갈린다 —
