@@ -76,10 +76,12 @@ data "aws_iam_policy_document" "github_actions_ecr_assume_role" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # GitHub can encode a branch or an environment in the OIDC subject. Limit
+    # the role to this repository while allowing either supported subject form.
     condition {
-      test     = "StringEquals"
+      test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_organization}/${var.github_repository}:ref:refs/heads/${var.github_deployment_branch}"]
+      values   = ["repo:${var.github_organization}/${var.github_repository}:*"]
     }
   }
 }
