@@ -203,3 +203,42 @@ resource "aws_secretsmanager_secret_version" "monitoring_gateway_oidc" {
     cookie_secret = random_password.monitoring_gateway_cookie.result
   })
 }
+
+# ── Grafana 로컬 admin — OIDC 가 아닌 시크릿이 여기 있는 이유 ──────
+#
+# **이 스택은 OIDC 클라이언트 시크릿을 소유한다.** Grafana 의 로컬 admin
+# 비밀번호는 OIDC 와 무관하고, 원래대로면 monitoring 쪽 스택이 가져야
+# 한다. **그런 스택이 없다.**
+#
+# 그래서 여기 둔다. 근거는 위 `oidc_client_secrets` 와 같다 — 인라인
+# 정책은 이름별로 독립이라 여러 스택이 같은 역할에 각자 붙여도 되고,
+# 이 파일이 이미 노드 역할 data source 를 갖고 있다.
+#
+# ⚠️ **monitoring terraform 스택이 생기면 이 블록을 그리로 옮긴다.**
+# 옮길 때 정책 이름을 유지하면 노드 쪽에서 끊김이 없다.
+#
+# ── 값은 terraform 이 만들지 않는다 ─────────────────────────────
+#
+# 시크릿 자체(`aws_secretsmanager_secret`)도 여기서 만들지 않는다.
+# 만들면 값을 넣는 순간 tfstate 에 평문으로 남는다 — terraform/vault 가
+# 시크릿 값을 안 만드는 것과 같은 이유다.
+#
+# 사람이 한 번 넣는다:
+#   aws secretsmanager create-secret --name cntlp/grafana/admin \
+#     --secret-string '{"admin-user":"admin","admin-password":"..."}'
+#
+# **여기가 소유하는 것은 「노드가 그것을 읽을 수 있다」는 사실뿐이다.**
+data "aws_iam_policy_document" "grafana_admin_secret" {
+  statement {
+    sid       = "ReadGrafanaAdminSecret"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    resources = ["arn:aws:secretsmanager:*:*:secret:cntlp/grafana/admin-*"]
+  }
+}
+
+resource "aws_iam_role_policy" "grafana_admin_secret" {
+  name   = "cntlp-aws-grafana-admin-secret-node"
+  role   = data.aws_iam_role.worker_node.name
+  policy = data.aws_iam_policy_document.grafana_admin_secret.json
+}
