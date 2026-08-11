@@ -377,15 +377,22 @@ resource "keycloak_openid_client" "opensearch" {
   # oauth2-proxy 는 PKCE 를 지원한다(v7.4+). 시크릿과 배타가 아니다.
   pkce_code_challenge_method = "S256"
 
-  # `/oauth2/callback` 은 oauth2-proxy 의 고정 경로다. 앞의 `/logs` 는
-  # tailscale serve 의 경로이고, oauth2-proxy 에도 같은 값을
-  # `--proxy-prefix` 로 알려줘야 한다 — 한쪽만 바꾸면 콜백이 어긋난다.
+  # 게이트는 cntlp-gcp-wk-02 의 **루트**에 마운트한다. 서브패스(/logs)에
+  # 걸었더니 로그인 뒤 착지가 깨졌다 — tailscale serve 가 접두사를 벗겨서
+  # 넘기므로 프록시는 착지 경로를 `/` 로 기록하는데, 그 호스트의 `/` 는
+  # Harbor 였다. 콜백은 멀쩡해서 "로그인은 되는데 딴 앱이 뜬다"로 나타난다.
+  #   → decisions/20260811_gate-at-root-not-subpath.md
+  #   → findings/20260811_logs-lands-on-harbor.md
+  #
+  # 노드를 cntlp-gcp-wk-02 로 고른 이유는 Dashboards 파드가 거기 있고,
+  # default-deny 네임스페이스에서는 NodePort 가 파드 노드에서만 열리기
+  # 때문이다. serve 를 여는 노드와 게이트 파드가 같아야 한다.
   valid_redirect_uris = [
-    "https://cntlp-onp-wk-01.tail270b85.ts.net/logs/oauth2/callback",
+    "https://cntlp-gcp-wk-02.tail270b85.ts.net/oauth2/callback",
   ]
 
   valid_post_logout_redirect_uris = [
-    "https://cntlp-onp-wk-01.tail270b85.ts.net/logs",
+    "https://cntlp-gcp-wk-02.tail270b85.ts.net/",
   ]
 
   web_origins = ["+"]

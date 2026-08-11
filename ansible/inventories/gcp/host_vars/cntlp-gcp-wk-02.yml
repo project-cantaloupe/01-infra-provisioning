@@ -1,0 +1,63 @@
+---
+# OpenSearch Dashboards 를 MagicDNS HTTPS 로 내보내는 노드 (2026-08-11 신설).
+#
+# ── 왜 이 노드인가 ────────────────────────────────────────────────
+#
+# 전에는 UI 프론트인 cntlp-onp-wk-01 의 `/logs` 에 게이트를 걸었다.
+# **로그인 뒤 Harbor 가 떴다.**
+#
+#   tailscale serve --set-path /logs 가 접두사를 벗겨서 넘긴다
+#     → oauth2-proxy 는 자기가 /logs 아래 있는 것을 모른다
+#     → 착지 경로를 `/` 로 기록한다
+#     → cntlp-onp-wk-01 의 `/` 는 Harbor 다
+#
+# ⚠️ **콜백은 멀쩡했다.** 들어오는 방향은 `--proxy-prefix` 로 맞출 수 있고
+# 나가는 방향은 맞출 설정이 oauth2-proxy 에 없다. 그래서 "로그인은 되는데
+# 엉뚱한 앱이 뜬다" 로 나타나고, 원인이 인증처럼 안 보인다.
+#   → decisions/20260811_gate-at-root-not-subpath.md
+#   → findings/20260811_logs-lands-on-harbor.md
+#
+# onp-wk-01 의 루트는 Harbor 가 못 비운다 — 이미지 참조 이름이
+# `<host>/<project>/<image>` 라 호스트 루트가 곧 레지스트리 주소다.
+# 그래서 게이트를 이 노드의 루트로 옮겼다.
+#
+# ── 왜 게이트 파드도 이 노드에 두나 ──────────────────────────────
+#
+# ⚠️ **`default-deny-ingress` 가 걸린 네임스페이스에서는 NodePort 가 파드가
+# 있는 노드에서만 열린다.** `externalTrafficPolicy: Cluster` 여도 그렇다 —
+# 크로스노드 트래픽은 SNAT 되어 파드에 **원격 노드 IP** 로 도착하고,
+# allow 규칙 중 어느 것도 노드 IP 를 잡지 않는다.
+#
+#   cntlp-gcp-wk-02  30418 = 000   (게이트 파드가 onp 에 있던 때)
+#   cntlp-onp-wk-01  30418 = 200
+#
+# 그래서 serve 를 여는 노드와 게이트 파드가 **같은 노드여야 한다.**
+# oauth2-proxy 의 nodeSelector 를 이 호스트로 고정했다
+# (02-k8s-manifests platform/gcp/logging-sso/oauth2-proxy.yaml).
+# Dashboards 파드도 여기 있어 홉이 하나 준다.
+#
+# ⚠️ **이 노드에 손으로 띄운 serve 가 있었다.** 8월 6일부터 포그라운드
+# 프로세스가 `/` → 30561(Dashboards 직결 = 게이트 우회)을 붙들고 있었고,
+# 015 가 그 NodePort 를 닫으면서 502 가 됐다. **롤을 돌리기 전에 그
+# 프로세스를 죽여야 한다** — 포그라운드 설정은 `tailscale serve status` 에
+# 안 보이고 `--json` 의 `Foreground` 키에만 있다.
+#   → findings/20260811_opensearch-502-was-the-closed-bypass.md
+tailscale_serve_enabled: true
+tailscale_serve_expected_dns_name: cntlp-gcp-wk-02.tail270b85.ts.net
+
+# ⚠️ `tailscale_tags` 를 여기서 덮지 않는다. platform_gcp.yml 의
+# `tag:cntlp-wk` 를 그대로 쓴다. cntlp-gcp-wk-01 과 같은 이유다 —
+# 태그 변경은 auth key 재조인을 요구해 되돌리기가 비싸다.
+
+tailscale_serve_routes:
+  # 루트는 인증 게이트다. 경로 분기는 게이트가 `--upstream` 으로 한다.
+  #
+  # ⚠️ **접두사 없이 루트에 두는 것이 설계의 핵심이다.** 서브패스에 걸면
+  # 위 주석의 착지 버그가 그대로 재현된다.
+  #
+  # ⚠️ **check 를 `/` 로 두지 않는다.** 미인증 요청은 302 라서 롤의 HEAD
+  # 검사가 통과는 하지만 프록시가 살았는지 못 가린다. `/ping` 이
+  # oauth2-proxy 의 인증 없는 헬스 경로다.
+  - path: /
+    backend: http://127.0.0.1:30418
+    check: http://127.0.0.1:30418/ping
