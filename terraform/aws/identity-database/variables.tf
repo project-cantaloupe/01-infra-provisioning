@@ -111,3 +111,15 @@ variable "final_snapshot_identifier" {
   type        = string
   default     = "cntlp-aws-identity-db-final"
 }
+
+# Keycloak 이 서기 전에 필요한 두 시크릿(RDS master, bootstrap-admin)의 읽기
+# 권한을 Compute Stack 의 Worker Role 에 인라인으로 붙일지 결정한다.
+#
+# default 는 true 다. 두 정책 다 이미 AWS 에 존재하고(2026-08-11 import),
+# count 를 가르는 변수의 기본값은 apply 된 상태와 일치해야 한다
+# → decisions/20260811_toggle-defaults-match-applied-state.md
+variable "enable_node_role_policy" {
+  description = "Whether to attach identity secret read policies to the worker node role"
+  type        = bool
+  default     = true
+}

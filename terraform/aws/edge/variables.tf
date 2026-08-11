@@ -220,3 +220,16 @@ check "cert_manager_iam_inputs_are_complete" {
     error_message = "route53_zone_id, cluster_oidc_provider_arn, and cluster_oidc_issuer_url are required when enable_cert_manager_iam is true."
   }
 }
+
+# cert-manager 의 Route53 권한을 Worker Role 에 인라인으로 붙일지 결정한다.
+# IRSA(`enable_cert_manager_iam`)가 준비되기 전의 실제 경로다
+# → decisions/20260806_cert-manager-node-instance-profile.md
+#
+# default 는 true 다. 이 정책은 이미 AWS 에 존재하고(2026-08-11 import),
+# count 를 가르는 변수의 기본값은 apply 된 상태와 일치해야 한다
+# → decisions/20260811_toggle-defaults-match-applied-state.md
+variable "enable_cert_manager_node_policy" {
+  description = "Whether to attach the cert-manager Route53 policy to the worker node role"
+  type        = bool
+  default     = true
+}
