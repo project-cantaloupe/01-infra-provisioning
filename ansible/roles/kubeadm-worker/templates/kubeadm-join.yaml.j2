@@ -19,3 +19,9 @@ nodeRegistration:
     - name: provider-id
       value: "{{ kubernetes_node_provider_id }}"
 {% endif %}
+{% if kubernetes_node_platform == 'aws' %}
+    - name: image-credential-provider-config
+      value: "{{ ecr_credential_provider_config | default('/etc/kubelet-credential-provider/ecr-credential-provider.yaml') }}"
+    - name: image-credential-provider-bin-dir
+      value: "{{ ecr_credential_provider_bin_directory | default('/usr/local/libexec/kubelet-credential-providers') }}"
+{% endif %}

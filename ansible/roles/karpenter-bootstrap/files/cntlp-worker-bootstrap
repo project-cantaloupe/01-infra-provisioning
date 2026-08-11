@@ -297,7 +297,11 @@ nodeRegistration:
     - name: node-labels
       value: "{node_labels}"
     - name: provider-id
-      value: "{provider_id}"{register_with_taints}
+      value: "{provider_id}"
+    - name: image-credential-provider-config
+      value: "/etc/kubelet-credential-provider/ecr-credential-provider.yaml"
+    - name: image-credential-provider-bin-dir
+      value: "/usr/local/libexec/kubelet-credential-providers"{register_with_taints}
 """
 
 output_path.write_text(config, encoding="utf-8")

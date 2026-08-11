@@ -1,0 +1,203 @@
+---
+- name: ECR credential provider 대상 확인
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system == 'Linux'
+      - ansible_facts.architecture == 'x86_64'
+      - ecr_credential_provider_version is match('^v1\.36\.[0-9]+$')
+      - ecr_credential_provider_sha256 is match('^[0-9a-f]{64}$')
+    fail_msg: 현재 Golden AMI는 Linux x86_64 ECR provider만 고정합니다.
+
+- name: ECR credential provider 디렉터리 생성
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ ecr_credential_provider_bin_directory }}"
+      mode: "0755"
+    - path: "{{ ecr_credential_provider_config_directory }}"
+      mode: "0755"
+
+- name: ECR credential provider 바이너리 설치
+  ansible.builtin.get_url:
+    url: "{{ ecr_credential_provider_download_url | regex_replace('\\s+', '') }}"
+    dest: "{{ ecr_credential_provider_binary }}"
+    checksum: "sha256:{{ ecr_credential_provider_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+  register: ecr_credential_provider_binary_install
+
+- name: ECR credential provider 설정 설치
+  ansible.builtin.template:
+    src: ecr-credential-provider.yaml.j2
+    dest: "{{ ecr_credential_provider_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ecr_credential_provider_config_install
+
+- name: ECR credential provider 버전 확인
+  ansible.builtin.command:
+    argv:
+      - "{{ ecr_credential_provider_binary }}"
+      - --version
+  register: ecr_credential_provider_installed_version
+  changed_when: false
+  check_mode: false
+
+- name: ECR credential provider 고정 버전 확인
+  ansible.builtin.assert:
+    that:
+      - >-
+        ecr_credential_provider_version in
+        (ecr_credential_provider_installed_version.stdout
+         ~ ecr_credential_provider_installed_version.stderr)
+    fail_msg: 설치된 ECR credential provider 버전이 고정값과 다릅니다.
+
+# 신규 노드는 kubeadm JoinConfiguration으로 두 인자를 받는다. 아래 처리는 이미
+# 조인된 고정 AWS Worker에 같은 설정을 보완하기 위한 경로다.
+- name: 기존 kubelet 인자 파일 확인
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ ecr_credential_provider_kubeadm_flags }}"
+    - "{{ ecr_credential_provider_default_flags }}"
+  register: ecr_credential_provider_flag_files
+
+- name: 기존 kubelet 인자 읽기
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ ecr_credential_provider_flag_files.results }}"
+  when: item.stat.exists
+  register: ecr_credential_provider_existing_flags
+
+- name: 기존 kubelet 인자 상태 계산
+  ansible.builtin.set_fact:
+    ecr_credential_provider_existing_flag_text: >-
+      {{ ecr_credential_provider_existing_flags.results
+         | selectattr('content', 'defined')
+         | map(attribute='content')
+         | map('b64decode')
+         | join('\n') }}
+    ecr_credential_provider_is_joined: >-
+      {{ ecr_credential_provider_flag_files.results[0].stat.exists }}
+    ecr_credential_provider_kubeadm_flag_text: >-
+      {{ ecr_credential_provider_existing_flags.results
+         | selectattr('item.item', 'equalto', ecr_credential_provider_kubeadm_flags)
+         | selectattr('content', 'defined')
+         | map(attribute='content')
+         | map('b64decode')
+         | first
+         | default('') }}
+
+- name: 기존 kubelet 인자의 부분 설정 거부
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('--image-credential-provider-config=' in ecr_credential_provider_existing_flag_text)
+        ==
+        ('--image-credential-provider-bin-dir=' in ecr_credential_provider_existing_flag_text)
+    fail_msg: >-
+      kubelet ECR credential provider 인자가 일부만 있습니다. 자동으로 덮어쓰지
+      않고 기존 /var/lib/kubelet/kubeadm-flags.env와 /etc/default/kubelet을
+      확인합니다.
+
+- name: 이미 조인된 kubelet에 ECR provider 인자 추가
+  ansible.builtin.replace:
+    path: "{{ ecr_credential_provider_kubeadm_flags }}"
+    regexp: '^(KUBELET_KUBEADM_ARGS=")([^"\n]*)"$'
+    replace: >-
+      \1\2 --image-credential-provider-config={{ ecr_credential_provider_config }}
+      --image-credential-provider-bin-dir={{ ecr_credential_provider_bin_directory }}"
+    backup: true
+  when:
+    - ecr_credential_provider_is_joined | bool
+    - >-
+      ('--image-credential-provider-config=' ~ ecr_credential_provider_config)
+      not in ecr_credential_provider_kubeadm_flag_text
+  register: ecr_credential_provider_flag_update
+
+# 이미 가입된 노드의 최종 소유 파일은 kubeadm-flags.env로 통일한다. 예전 수동
+# 설정이나 다른 자동화가 /etc/default/kubelet에 같은 인자를 넣었으면 두 파일의
+# 인자가 중복되고 ExecStart의 뒤쪽 값이 앞쪽 값을 덮는다. node-ip 등 다른 인자는
+# 보존하고 credential-provider 인자만 제거한다.
+- name: 기존 kubelet 기본 파일의 ECR provider 중복 인자 제거
+  ansible.builtin.replace:
+    path: "{{ ecr_credential_provider_default_flags }}"
+    regexp: '[ \t]*--image-credential-provider-(?:config|bin-dir)=[^" \t\n]+'
+    replace: ''
+    backup: true
+  when:
+    - ecr_credential_provider_is_joined | bool
+    - ecr_credential_provider_flag_files.results[1].stat.exists
+  register: ecr_credential_provider_default_flag_cleanup
+
+- name: 기존 kubelet ECR provider 인자 적용 확인
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --fixed-strings
+      - --
+      - "{{ item }}"
+      - "{{ ecr_credential_provider_kubeadm_flags }}"
+  loop:
+    - "--image-credential-provider-config={{ ecr_credential_provider_config }}"
+    - "--image-credential-provider-bin-dir={{ ecr_credential_provider_bin_directory }}"
+  changed_when: false
+  when: ecr_credential_provider_is_joined | bool
+
+- name: 기존 kubelet ECR provider 변경 적용 예약
+  ansible.builtin.debug:
+    msg: ECR credential provider 변경 후 kubelet을 재시작합니다.
+  changed_when: >-
+    ecr_credential_provider_binary_install.changed
+    or ecr_credential_provider_config_install.changed
+    or (ecr_credential_provider_flag_update.changed | default(false))
+    or (ecr_credential_provider_default_flag_cleanup.changed | default(false))
+  when: ecr_credential_provider_is_joined | bool
+  notify: kubelet 재시작
+
+- name: 기존 kubelet 재시작 즉시 적용
+  ansible.builtin.meta: flush_handlers
+  when: ecr_credential_provider_is_joined | bool
+
+- name: 기존 kubelet 서비스 복귀 확인
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - kubelet
+  register: ecr_credential_provider_kubelet_active
+  until: ecr_credential_provider_kubelet_active.stdout | trim == 'active'
+  retries: 12
+  delay: 5
+  changed_when: false
+  when: ecr_credential_provider_is_joined | bool
+
+- name: 실행 중인 kubelet 인자 확인
+  ansible.builtin.command:
+    argv:
+      - ps
+      - -C
+      - kubelet
+      - -o
+      - args=
+  register: ecr_credential_provider_kubelet_process
+  changed_when: false
+  when: ecr_credential_provider_is_joined | bool
+
+- name: 실행 중인 kubelet ECR provider 연결 확인
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('--image-credential-provider-config=' ~ ecr_credential_provider_config)
+        in ecr_credential_provider_kubelet_process.stdout
+      - >-
+        ('--image-credential-provider-bin-dir=' ~ ecr_credential_provider_bin_directory)
+        in ecr_credential_provider_kubelet_process.stdout
+    fail_msg: kubelet이 ECR credential provider 인자로 재기동되지 않았습니다.
+  when: ecr_credential_provider_is_joined | bool
