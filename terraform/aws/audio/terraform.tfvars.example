@@ -43,6 +43,8 @@ ecr_tag_retention_count = 30
 github_organization    = "project-cantaloupe"
 github_repository      = "03-app-audio"
 github_deployment_branch = "main"
+# GitHub 조직 OIDC subject template이 repository ID를 포함하도록 설정되어 있습니다.
+github_oidc_subject = "repo:project-cantaloupe@309632655/03-app-audio@1313494264:ref:refs/heads/main"
 
 audio_namespace                 = "apps"
 audio_api_service_account       = "audio-api"

@@ -270,6 +270,12 @@ variable "github_deployment_branch" {
   default     = "main"
 }
 
+variable "github_oidc_subject" {
+  description = "Exact GitHub Actions OIDC subject allowed to publish ECR images; set this to the repository's configured OIDC subject template"
+  type        = string
+  default     = "repo:project-cantaloupe@309632655/03-app-audio@1313494264:ref:refs/heads/main"
+}
+
 check "ecr_github_repository_inputs_are_complete" {
   assert {
     condition = (
@@ -278,8 +284,9 @@ check "ecr_github_repository_inputs_are_complete" {
         length(trimspace(var.github_organization)) > 0
         && length(trimspace(var.github_repository)) > 0
         && length(trimspace(var.github_deployment_branch)) > 0
+        && length(trimspace(var.github_oidc_subject)) > 0
       )
     )
-    error_message = "github_organization, github_repository, and github_deployment_branch are required when enable_ecr is true."
+    error_message = "github_organization, github_repository, github_deployment_branch, and github_oidc_subject are required when enable_ecr is true."
   }
 }
