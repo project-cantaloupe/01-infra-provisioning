@@ -54,6 +54,18 @@ output "workload_role_arns" {
   }
 }
 
+output "ecr_repository_urls" {
+  description = "ECR image repository URLs used by the audio Kubernetes manifests"
+  value = {
+    for component, repository in aws_ecr_repository.audio : component => repository.repository_url
+  }
+}
+
+output "github_actions_ecr_role_arn" {
+  description = "Role ARN configured as the AWS_GITHUB_ACTIONS_ROLE_ARN GitHub repository variable"
+  value       = try(aws_iam_role.github_actions_ecr[0].arn, null)
+}
+
 output "runtime_environment" {
   description = "Non-secret environment contract shared with the Kubernetes manifests"
   value = {

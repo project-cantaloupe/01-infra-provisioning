@@ -36,6 +36,14 @@ enable_node_role_policy = true
 # KEDA를 설치할 때만 Control Plane Role에 transcode Queue 조회 권한을 붙인다.
 enable_keda_controller_policy = false
 
+# AWS 배포용 ECR과 GitHub Actions OIDC 배포 역할을 생성합니다. Harbor는 내부 검증용으로
+# 계속 사용할 수 있지만, AWS 노드가 실제로 pull 하는 이미지는 ECR로 전환합니다.
+enable_ecr             = true
+ecr_tag_retention_count = 30
+github_organization    = "project-cantaloupe"
+github_repository      = "03-app-audio"
+github_deployment_branch = "main"
+
 audio_namespace                 = "apps"
 audio_api_service_account       = "audio-api"
 audio_events_service_account    = "audio-events"

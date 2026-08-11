@@ -234,3 +234,52 @@ variable "enable_keda_controller_policy" {
   type        = bool
   default     = false
 }
+
+variable "enable_ecr" {
+  description = "Whether to create ECR repositories and the GitHub Actions and worker-node IAM permissions used to publish and pull audio images"
+  type        = bool
+  default     = false
+}
+
+variable "ecr_tag_retention_count" {
+  description = "Number of tagged ECR images retained for each audio component"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.ecr_tag_retention_count >= 1
+    error_message = "ecr_tag_retention_count must be at least 1."
+  }
+}
+
+variable "github_organization" {
+  description = "GitHub organization allowed to assume the ECR publishing role"
+  type        = string
+  default     = "project-cantaloupe"
+}
+
+variable "github_repository" {
+  description = "GitHub repository allowed to assume the ECR publishing role"
+  type        = string
+  default     = "03-app-audio"
+}
+
+variable "github_deployment_branch" {
+  description = "Git branch allowed to publish release images to ECR"
+  type        = string
+  default     = "main"
+}
+
+check "ecr_github_repository_inputs_are_complete" {
+  assert {
+    condition = (
+      !var.enable_ecr
+      || (
+        length(trimspace(var.github_organization)) > 0
+        && length(trimspace(var.github_repository)) > 0
+        && length(trimspace(var.github_deployment_branch)) > 0
+      )
+    )
+    error_message = "github_organization, github_repository, and github_deployment_branch are required when enable_ecr is true."
+  }
+}
