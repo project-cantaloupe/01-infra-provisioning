@@ -174,3 +174,32 @@ resource "aws_secretsmanager_secret_version" "opensearch_oidc" {
     cookie_secret = random_password.opensearch_cookie.result
   })
 }
+
+# 모니터링 게이트웨이 (Prometheus · OpenCost). OpenSearch 쪽과 같은 모양이다.
+resource "random_password" "monitoring_gateway_cookie" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "monitoring_gateway_oidc" {
+  name        = "${local.oidc_secret_prefix}/monitoring-gateway"
+  description = "oauth2-proxy client secret + cookie secret. terraform/keycloak 이 소유한다."
+
+  recovery_window_in_days = 7
+
+  tags = {
+    Project   = "cantaloupe"
+    ManagedBy = "terraform"
+    Stack     = "keycloak"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "monitoring_gateway_oidc" {
+  secret_id = aws_secretsmanager_secret.monitoring_gateway_oidc.id
+
+  secret_string = jsonencode({
+    client_id     = keycloak_openid_client.monitoring_gateway.client_id
+    client_secret = keycloak_openid_client.monitoring_gateway.client_secret
+    cookie_secret = random_password.monitoring_gateway_cookie.result
+  })
+}

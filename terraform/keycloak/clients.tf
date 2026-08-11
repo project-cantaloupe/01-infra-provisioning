@@ -435,3 +435,84 @@ resource "keycloak_openid_audience_protocol_mapper" "opensearch" {
   add_to_id_token     = false # id_token 에는 이미 들어 있다
   add_to_access_token = true
 }
+
+# ── 모니터링 게이트웨이 (Prometheus · OpenCost) ──────────────────
+#
+# 둘 다 **인증이 아예 없는** UI 다. Prometheus 도 OpenCost 도 로그인
+# 화면이라는 것이 없다. 그래서 OpenSearch 와 같은 처방을 쓴다 — 도구를
+# 고치는 대신 앞에 게이트를 세운다
+# → decisions/20260811_oidc-client-type-per-tool.md
+#
+# ⚠️ **OpenSearch 게이트와 클라이언트를 공유하지 않는다.** 하나로 묶으면
+# 리다이렉트 URI 가 한 클라이언트에 여럿 붙고, 그중 하나가 뚫리면 나머지
+# 게이트의 코드도 그리로 보낼 수 있다. 게이트마다 클라이언트 하나다.
+#
+# ── 이 클라이언트가 루트(`/`)에 사는 이유 ───────────────────────
+#
+# `tailscale serve --set-path <접두사>` 는 백엔드에 넘기기 **전에 접두사를
+# 뗀다.** 그래서 서브패스에 건 프록시는 자기가 어느 접두사 아래 있는지
+# 모르고, **로그인 뒤 돌려보낼 때 그 접두사를 잃는다.**
+#
+#   브라우저 /logs/api/status → 로그인 → /api/status 로 착지 → 404
+#
+# 접두사가 없으면 안팎의 좌표계가 같아져서 이 문제가 성립하지 않는다.
+# 그래서 이 게이트는 `cntlp-gcp-wk-01` 의 **루트**에 마운트하고, 경로
+# 분기는 프록시가 직접 한다 (`--upstream` 을 경로별로 준다).
+# → findings/20260811_group-mapping-verified-and-two-corrections.md
+resource "keycloak_openid_client" "monitoring_gateway" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "monitoring-gateway"
+  name      = "Monitoring Gateway (Prometheus, OpenCost)"
+  enabled   = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  pkce_code_challenge_method = "S256"
+
+  # 루트 마운트라 `/oauth2/callback` 앞에 아무것도 없다. 프록시의
+  # `--proxy-prefix` 기본값(`/oauth2`)과 그대로 일치한다 — OpenSearch
+  # 쪽에서 둘이 어긋나 무한 루프가 났던 자리다.
+  valid_redirect_uris = [
+    "https://cntlp-gcp-wk-01.tail270b85.ts.net/oauth2/callback",
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://cntlp-gcp-wk-01.tail270b85.ts.net/",
+  ]
+
+  web_origins = ["+"]
+}
+
+resource "keycloak_openid_client_default_scopes" "monitoring_gateway" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.monitoring_gateway.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}
+
+# access_token 의 `aud` 기본값은 `account` 라서 oauth2-proxy 가 거절한다.
+# OpenSearch 쪽과 같은 이유·같은 처방이다 — 프록시에 예외를 주지 않고
+# 발행 쪽에서 고친다.
+resource "keycloak_openid_audience_protocol_mapper" "monitoring_gateway" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.monitoring_gateway.id
+  name      = "audience"
+
+  included_client_audience = keycloak_openid_client.monitoring_gateway.client_id
+
+  add_to_id_token     = false
+  add_to_access_token = true
+}
