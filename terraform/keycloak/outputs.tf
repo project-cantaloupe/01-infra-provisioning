@@ -18,3 +18,14 @@ output "groups" {
   description = "RBAC·정책의 주체로 그대로 쓰는 이름들"
   value       = sort(keys(local.groups))
 }
+
+output "audio_oidc" {
+  description = "오디오 Web 빌드와 API 런타임에 넣는 공개 OIDC 설정"
+  value = {
+    issuer_url               = "https://auth.echoprism.cloud/realms/${keycloak_realm.cantaloupe.realm}"
+    web_client_id            = keycloak_openid_client.audio_web.client_id
+    api_audience             = keycloak_openid_client.audio_api.client_id
+    redirect_uri             = "https://audio.echoprism.cloud/auth/callback"
+    post_logout_redirect_uri = "https://audio.echoprism.cloud/"
+  }
+}

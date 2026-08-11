@@ -523,3 +523,84 @@ resource "keycloak_openid_audience_protocol_mapper" "monitoring_gateway" {
   add_to_id_token     = false
   add_to_access_token = true
 }
+
+# ── 오디오 Web·API ─────────────────────────────────────────────
+#
+# 브라우저는 비밀값을 안전하게 보관할 수 없으므로 `audio-web` 을 Public
+# Client 로 두고 Authorization Code + PKCE 흐름만 허용한다. 비밀번호 grant,
+# implicit flow, service account 는 사용하지 않는다.
+resource "keycloak_openid_client" "audio_web" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "audio-web"
+  name      = "Audio Web"
+  enabled   = true
+
+  access_type = "PUBLIC"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+
+  pkce_code_challenge_method = "S256"
+
+  # 콜백과 로그아웃 목적지를 실제 서비스 주소로 제한한다. 와일드카드를
+  # 허용하지 않아 인가 코드가 다른 경로로 전달되는 범위를 넓히지 않는다.
+  valid_redirect_uris = [
+    "https://audio.echoprism.cloud/auth/callback",
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://audio.echoprism.cloud/",
+  ]
+
+  web_origins = [
+    "https://audio.echoprism.cloud",
+  ]
+}
+
+resource "keycloak_openid_client_default_scopes" "audio_web" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.audio_web.id
+
+  default_scopes = [
+    "profile",
+    "email",
+    "roles",
+    "web-origins",
+    "acr",
+    "basic",
+    keycloak_openid_client_scope.groups.name,
+  ]
+}
+
+# `audio-api` 는 로그인 흐름을 시작하지 않고 `audio-web` 이 보낸 Access
+# Token 만 검증한다. Bearer-only Client 로 두면 브라우저 로그인이나
+# client_credentials 용도로 잘못 사용할 수 없다.
+resource "keycloak_openid_client" "audio_api" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = "audio-api"
+  name      = "Audio API"
+  enabled   = true
+
+  access_type = "BEARER-ONLY"
+
+  standard_flow_enabled        = false
+  direct_access_grants_enabled = false
+  implicit_flow_enabled        = false
+  service_accounts_enabled     = false
+}
+
+# API 는 Access Token 의 `aud` 가 `audio-api` 인 경우에만 요청을 받는다.
+# Client ID 만 만든다고 audience 가 자동으로 붙지 않으므로 발급 주체인
+# `audio-web` 에 Mapper 를 명시한다.
+resource "keycloak_openid_audience_protocol_mapper" "audio_api" {
+  realm_id  = keycloak_realm.cantaloupe.id
+  client_id = keycloak_openid_client.audio_web.id
+  name      = "audio-api-audience"
+
+  included_client_audience = keycloak_openid_client.audio_api.client_id
+
+  add_to_id_token     = false
+  add_to_access_token = true
+}
