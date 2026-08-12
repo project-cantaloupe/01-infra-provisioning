@@ -167,6 +167,13 @@ VM 을 쪼개도 호스트가 죽으면 같이 죽으므로 가용성은 안 늘
 kubelet·containerd·Calico 오버헤드만 중복된다.
 Harbor 스토리지를 한 노드에 몰아 쓸 수 있어 디스크 병목도 늦게 온다.
 
+이 시작 사이즈는 고정된 최적값이 아니다. `02-k8s-manifests`의 On-prem
+right-sizing rule은 최근 7일 Node CPU/Memory P95, OS/kubelet 예약량,
+현재 Pod request, OOMKilled·MemoryPressure를 사용해 내부 profile 후보를
+계산한다. 이 결과는 Terraform 자동 변경이 아니라 수동 검토용이다.
+P95 기준 축소 후보여도 Pod request가 재배치되지 않거나 물리 호스트
+제약을 충족하지 못하면 적용하지 않는다.
+
 디스크가 120GB 인 이유는 따로 있다. 256GB NVMe 는 기본 설치에서
 `local`(디렉터리, 67GB) 과 `local-lvm`(lvmthin, 140GB) 으로 쪼개진다.
 VM 디스크는 `local-lvm` 에서만 나오므로 상한이 256 이 아니라 **140** 이다.

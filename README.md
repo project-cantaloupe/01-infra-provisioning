@@ -83,6 +83,7 @@ Argo CD 설치와 최초 Root Application 등록은 클러스터 구성 뒤 별�
 | 슬러그 | 언제 편다 |
 |---|---|
 | `references/20260810_k8s-kubelet-serving-tls.md` | Metrics Server 가 kubelet 10250 을 검증하도록 serving 인증서를 노드 한 대씩 전환할 때 |
+| `references/20260812_finops-infrastructure-contract.md` | OpenCost·VPA·Provider/S3 collector가 요구하는 인프라 계약을 변경할 때 |
 
 **리포에 남는 문서는 디렉터리 README 뿐이다.** 그 코드를 고칠 때 같이 보는
 것이라 코드 옆에 둔다 — `ansible/README.md`,
@@ -94,7 +95,7 @@ Argo CD 설치와 최초 Root Application 등록은 클러스터 구성 뒤 별�
 
 ```
 terraform/
-  modules/finops-tags/       공통 관리 태그 모듈 자리
+  modules/finops-tags/       공통 관리 태그 계약
   modules/secops-baseline/   공통 IAM·보안그룹
   aws/network/   VPC, 서브넷, 라우팅, 보안그룹, EICE
   aws/egress/    독립 생성·삭제하는 NAT Gateway
@@ -157,5 +158,12 @@ done
 
 ## 클러스터 안쪽 거버넌스는 여기 없다
 
-파드 보안이나 리소스 쿼터는 [`k8s-manifests/governance/`](../02-k8s-manifests/) 에 있다.
+파드 보안이나 리소스 쿼터는
+[`02-k8s-manifests/governance/`](https://github.com/project-cantaloupe/02-k8s-manifests/tree/main/governance)에 있다.
 여기는 클라우드 자원(태그, IAM, 보안그룹) 쪽만 담당한다.
+
+OpenCost, Prometheus, Grafana, Metrics Server, VPA Recommender와 FinOps
+recording rule도 `02-k8s-manifests`가 소유한다. 이 저장소는 그들이
+신뢰할 수 있는 노드 라벨·providerID·read-only IAM·S3 Lifecycle과
+kubelet serving TLS를 제공한다. 대시보드 숫자나 VPA 권고값을 Terraform
+output으로 관리하지 않는다.

@@ -167,10 +167,20 @@ enable_keda_controller_policy = true
 - CloudFront 요청과 전송량
 - Secrets Manager Secret 보관
 
-128 KB 초과 원본은 0~29일 Standard, 30~59일 Standard-IA, 60일 이후 Glacier
+`incoming/` prefix의 128 KB 초과 원본은 0~29일 Standard, 30~59일
+Standard-IA, 60일 이후 Glacier
 Instant Retrieval을 기준선으로 둔다. 현재 원본은 자동 삭제하지 않고 이전 버전만
 7일 뒤 정리한다. 결과 객체도 현재 버전은 자동 삭제하지 않고 이전 버전만 7일 뒤
 정리한다.
+
+Grafana `Audio S3 Lifecycle FinOps`는 이 두 bucket만 명시적으로
+수집한다. Current 용량·Storage Class 추이는 6시간 주기 실측값이고,
+Versioning으로 남은 Previous 용량은 전체 과금 용량과 7일 만료
+효과 계산에 별도로 포함된다. 120일 Lifecycle 패널은 현재 용량이
+일정하다는 가상 묶음의 비교 시나리오이며 AWS 미래 청구액 예측이 아니다.
+수집·메트릭·단가 구현은 `02-k8s-manifests`, 인프라 계약은
+[`../../../references/20260812_finops-infrastructure-contract.md`](../../../references/20260812_finops-infrastructure-contract.md)를
+기준으로 한다.
 
 Audio 상태만 destroy하면 VPC, EC2, RDS, NLB, Kubernetes Node 등 다른 Stack이
 소유한 자원은 유지된다.
