@@ -59,11 +59,16 @@ Instance Profile, Private Subnet, Worker Security Group과 정확한 Golden AMI�
 재사용한다. Kubernetes Controller와 NodePool 매니페스트는
 `02-k8s-manifests` 저장소가 관리한다.
 
-초기 E2E는 `cntlp-aws-wk-99` 한 대만 허용한다. 이 고정 이름은 Karpenter가
-EC2를 생성·가입·삭제하는 경로를 검증하기 위한 예약 이름이며 다중 NodePool
-운영 계약이 아니다. 현재 NodePool의 최대 Node 수도 1로 제한한다. Karpenter가
-같은 이름으로 다시 가입할 때 이전 ephemeral Device가 tailnet에 남아 있으면
-Tailscale DNS 이름에는 `-1`, `-2` 접미사가 붙을 수 있다. Kubernetes Node 이름은
+초기 E2E는 `cntlp-aws-wk-99` 한 대만 사용해 EC2 생성·가입·삭제 경로를 검증했다.
+현재 Audio FinOps 비교에서는 `02-k8s-manifests`가 `cntlp-aws-wk-98`과
+`cntlp-aws-wk-99` 예약 이름을 각각 소유하는 NodePool·EC2NodeClass 두 쌍을
+관리한다. 각 NodePool은 최대 한 대이고 두 풀의 합계 상한은 두 대다.
+
+Bootstrap의 `--node-name` 검증은 `cntlp-aws-wk-[0-9]{2}`를 이미 허용하므로 같은
+Golden AMI를 재사용한다. 예약 이름은 EC2NodeClass UserData에서 전달하며 AMI를 다시
+빌드하지 않는다. Karpenter가 같은 이름으로 다시 가입할 때 이전 ephemeral Device가
+tailnet에 남아 있으면 Tailscale DNS 이름에는 `-1`, `-2` 접미사가 붙을 수 있다.
+Kubernetes Node 이름은
 예약 이름을 유지하고 해당 Tailscale 접미사만 bootstrap에서 허용한다.
 
 ## Golden AMI Boot Test
@@ -103,9 +108,10 @@ EC2와 Root EBS를 삭제한다. AMI와 Snapshot, Packer Builder IAM·Security G
 
 ## Tailscale과 kubeadm 자동 가입 자격 증명
 
-기본 Boot Test가 성공한 다음, 같은 예약 이름 `cntlp-aws-wk-99` 한 대로
-Tailscale 가입과 kubeadm join을 검증한다. 이 단계는 Karpenter Controller나
-다중 Node 명명 로직을 검증하지 않는다.
+기본 Boot Test가 성공한 다음, 예약 이름 `cntlp-aws-wk-99` 한 대로
+Tailscale 가입과 kubeadm join을 검증한다. 이 Terraform Boot Test는 Karpenter
+Controller의 다중 Node 생성을 검증하지 않는다. 두 예약 이름의 동시 가입과 축소는
+GitOps 구성을 배포한 뒤 실제 Burst 부하 E2E에서 별도로 검증한다.
 
 Terraform은 다음 경계만 관리하고 Secret 값은 Terraform 변수, state, AMI,
 EC2 user data에 넣지 않는다.
