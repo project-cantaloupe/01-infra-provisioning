@@ -241,10 +241,15 @@ data "aws_iam_policy_document" "karpenter_controller" {
   }
 
   statement {
-    sid       = "AllowWorkerInstanceProfileRead"
-    effect    = "Allow"
-    actions   = ["iam:GetInstanceProfile"]
-    resources = ["arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:instance-profile/${local.worker_instance_profile_name}"]
+    sid     = "AllowWorkerInstanceProfileRead"
+    effect  = "Allow"
+    actions = ["iam:GetInstanceProfile"]
+    resources = [
+      "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:instance-profile/${local.worker_instance_profile_name}",
+      # 사전 지정 Profile로 전환하기 전에 Karpenter가 만든 Profile의 삭제 Finalizer가
+      # NoSuchEntity를 확인할 수 있게 생성형 Prefix의 읽기만 허용한다.
+      "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:instance-profile/${local.kubernetes_cluster_name}_*",
+    ]
   }
 }
 
