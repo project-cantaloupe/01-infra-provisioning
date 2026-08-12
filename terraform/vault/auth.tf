@@ -62,3 +62,17 @@ resource "vault_approle_auth_backend_role" "ansible_onp" {
 #
 # secret_id_ttl 이 24시간이라 발급은 반복 작업이 된다. 자동화가 필요해지면
 # CI 가 자기 secret_id 를 받는 경로(response wrapping)를 따로 만든다.
+
+resource "vault_approle_auth_backend_role" "eso_harbor" {
+  backend        = vault_auth_backend.approle.path
+  role_name      = "eso-harbor"
+  token_policies = [vault_policy.eso_harbor.name]
+
+  token_ttl     = var.approle_token_ttl_seconds
+  token_max_ttl = var.approle_token_ttl_seconds * 2
+
+  # ESO 가 상시 구동되며 시크릿을 갱신해야 하므로 secret_id 만료를 두지 않는다.
+  # (자동 갱신 파이프라인이 아직 없다)
+  secret_id_num_uses = 0
+  secret_id_ttl      = 0
+}

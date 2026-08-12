@@ -23,3 +23,8 @@ resource "vault_policy" "ansible_onp" {
   name   = "ansible-onp"
   policy = file("${path.module}/policies/ansible-onp.hcl")
 }
+
+resource "vault_policy" "eso_harbor" {
+  name   = "eso-harbor"
+  policy = file("${path.module}/policies/eso-harbor.hcl")
+}
