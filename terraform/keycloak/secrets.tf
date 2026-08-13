@@ -266,3 +266,23 @@ resource "aws_iam_role_policy" "grafana_admin_secret" {
   role   = data.aws_iam_role.worker_node.name
   policy = data.aws_iam_policy_document.grafana_admin_secret.json
 }
+
+# ── Alertmanager Kyverno Slack webhook ───────────────────────────
+#
+# The value is created manually in Secrets Manager so it never enters
+# Terraform state. This policy only lets External Secrets on the AWS worker
+# project that one named webhook into the monitoring namespace.
+data "aws_iam_policy_document" "kyverno_slack_webhook" {
+  statement {
+    sid       = "ReadKyvernoSlackWebhook"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    resources = ["arn:aws:secretsmanager:*:*:secret:cntlp/alertmanager/slack/kyverno-*"]
+  }
+}
+
+resource "aws_iam_role_policy" "kyverno_slack_webhook" {
+  name   = "cntlp-aws-kyverno-slack-secret-node"
+  role   = data.aws_iam_role.worker_node.name
+  policy = data.aws_iam_policy_document.kyverno_slack_webhook.json
+}
