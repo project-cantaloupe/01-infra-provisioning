@@ -133,7 +133,7 @@ scripts/
 |---|---|
 | `org` | `cntlp` |
 | `platform` | `aws` / `gcp` / `onp` |
-| `role` | `control-plane` / `service` / `devops` / `monitoring` / `messaging` / `logging` |
+| `role` | `control-plane` / `service` / `devops` / `monitoring` / `logging` |
 
 AWS·GCP의 공통 관리 태그는 `org`, `owner`, `managed-by`, `lifecycle`,
 `platform`이다. Node에는 `role`, 그 밖의 자원에는 필요할 때 `component`를
@@ -161,6 +161,11 @@ done
 파드 보안이나 리소스 쿼터는
 [`02-k8s-manifests/governance/`](https://github.com/project-cantaloupe/02-k8s-manifests/tree/main/governance)에 있다.
 여기는 클라우드 자원(태그, IAM, 보안그룹) 쪽만 담당한다.
+
+Namespace의 생성·삭제와 PSA/Kyverno 범위도 이 저장소에서 관리하지 않는다.
+현재 `finops`, `messaging` Namespace는 사용하지 않고, FinOps collector와
+OpenCost는 `monitoring` Namespace에서 실행한다. 클러스터 내부의 최종 목록은
+`02-k8s-manifests/governance/namespaces/`를 기준으로 확인한다.
 
 OpenCost, Prometheus, Grafana, Metrics Server, VPA Recommender와 FinOps
 recording rule도 `02-k8s-manifests`가 소유한다. 이 저장소는 그들이
