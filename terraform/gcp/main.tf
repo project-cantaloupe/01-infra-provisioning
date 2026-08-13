@@ -153,10 +153,10 @@ resource "google_compute_disk" "metrics_disk" {
   }
 }
 
-# --- Compute Engine 인스턴스 (Worker Node 01 - e2-standard-2) ---
+# --- Compute Engine 인스턴스 (Worker Node 01 - e2-custom-4-8192) ---
 resource "google_compute_instance" "worker_node_01" {
   name         = "cntlp-gcp-wk-01"
-  machine_type = "e2-standard-2" # vCPU 2개, 메모리 8GB
+  machine_type = "e2-custom-4-8192" # vCPU 4개, 메모리 8GB
   zone         = var.zone
   labels = merge(local.common_labels, {
     role = "monitoring"
