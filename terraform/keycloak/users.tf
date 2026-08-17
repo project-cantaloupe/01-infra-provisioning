@@ -55,3 +55,39 @@ resource "keycloak_user_groups" "platform_admin" {
     keycloak_group.area["platform-admin"].id,
   ]
 }
+
+# ── secops — 계층별 권한이 실제로 다르다는 것을 보이는 계정 ─────
+#
+# `platform-admin` 하나만 있으면 "권한이 붙었다"는 보여도 **"권한이 갈린다"**
+# 는 못 보인다. 대조군이 없기 때문이다. 이 계정의 존재 이유는 그 대조군이고,
+# K8s RBAC 주체 이름 `oidc:secops` 가 여기 username 에서 나온다.
+#
+# 위의 두 규약을 그대로 따른다 — **비밀번호는 코드 밖**이고,
+# **그룹 소속은 terraform 이 배타적으로 소유한다.**
+resource "keycloak_user" "secops" {
+  realm_id = keycloak_realm.cantaloupe.id
+  username = var.secops_username
+  enabled  = true
+
+  email      = var.secops_email
+  first_name = var.secops_first_name
+  last_name  = var.secops_last_name
+
+  # platform_admin 과 같은 이유다. 메일 서버가 없어 검증 메일을 못 보내고,
+  # false 로 두면 VERIFY_EMAIL 이 붙어 로그인 자체가 막힌다.
+  email_verified = true
+
+  # required_actions 를 선언하지 않는 이유도 위와 같다 — 사용자가 끝내면
+  # Keycloak 이 목록을 비우고 terraform 이 그걸 드리프트로 본다.
+}
+
+resource "keycloak_user_groups" "secops" {
+  realm_id = keycloak_realm.cantaloupe.id
+  user_id  = keycloak_user.secops.id
+
+  # 하나만 넣는다. 여러 그룹을 넣으면 **어느 그룹 때문에 권한이 붙었는지
+  # 화면에서 구분이 안 되고**, 이 계정의 목적이 바로 그 구분이다.
+  group_ids = [
+    keycloak_group.area["secops"].id,
+  ]
+}
