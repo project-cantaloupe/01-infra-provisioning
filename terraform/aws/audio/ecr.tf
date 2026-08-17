@@ -182,6 +182,25 @@ data "aws_iam_policy_document" "github_actions_ecr_publish" {
       [for repository in aws_ecr_repository.mirror : repository.arn],
     )
   }
+
+  # Mirroring copies a manifest list rather than pushing a locally built image,
+  # and `docker buildx imagetools create` HEADs the destination manifest before
+  # writing it. ECR maps that HEAD to ecr:BatchGetImage, which the push actions
+  # above do not cover -- an ordinary `docker push` never takes this path
+  # because it probes with BatchCheckLayerAvailability instead. Without this the
+  # copy fails at the very end with a 403 that reads like a broken role.
+  #
+  # Scoped to the mirror repositories only: the application publish path does
+  # not need to read what it pushes.
+  statement {
+    sid    = "ReadMirrorManifests"
+    effect = "Allow"
+    actions = [
+      "ecr:BatchGetImage",
+      "ecr:DescribeImages",
+    ]
+    resources = [for repository in aws_ecr_repository.mirror : repository.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "github_actions_ecr_publish" {
