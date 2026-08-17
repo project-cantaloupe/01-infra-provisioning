@@ -61,6 +61,13 @@ output "ecr_repository_urls" {
   }
 }
 
+output "ecr_mirror_repository_urls" {
+  description = "ECR repositories mirroring upstream public images (not built here)"
+  value = {
+    for component, repository in aws_ecr_repository.mirror : component => repository.repository_url
+  }
+}
+
 output "github_actions_ecr_role_arn" {
   description = "Role ARN configured as the AWS_GITHUB_ACTIONS_ROLE_ARN GitHub repository variable"
   value       = try(aws_iam_role.github_actions_ecr[0].arn, null)

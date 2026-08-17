@@ -4,6 +4,17 @@ locals {
     web    = "app-audio-web"
     worker = "app-audio-worker"
   }
+
+  # Mirrors of upstream public images. These are NOT application images: we do not
+  # build them, we copy them byte for byte so that workloads can be pinned to a
+  # registry we control. Kept in a separate map (and a separate resource) so the
+  # `component = "audio-*"` tagging stays truthful.
+  #
+  # Consumers: apps/audio/loadtest/{cronjobs,collector-cronjob}.yaml in
+  # 02-k8s-manifests, which run FinOps load generation on `python:3.12-alpine`.
+  ecr_mirror_repositories = {
+    python = "mirror-python"
+  }
 }
 
 # AWS runtime images use immutable commit-SHA tags. Harbor can remain available for
@@ -28,6 +39,31 @@ resource "aws_ecr_repository" "audio" {
   })
 }
 
+resource "aws_ecr_repository" "mirror" {
+  for_each = var.enable_ecr ? local.ecr_mirror_repositories : {}
+
+  name = each.value
+
+  # IMMUTABLE on purpose. A mirror whose tag can be repointed defeats the reason
+  # the mirror exists -- workloads would still be pulling content that can change
+  # underneath them, just from a nicer hostname. Refreshing to a newer upstream
+  # means pushing a NEW tag (e.g. 3.12-alpine-20260818), not overwriting one.
+  image_tag_mutability = "IMMUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = merge(local.default_tags, {
+    Name      = each.value
+    component = "mirror-${each.key}"
+  })
+}
+
 resource "aws_ecr_lifecycle_policy" "audio" {
   for_each = aws_ecr_repository.audio
 
@@ -41,6 +77,31 @@ resource "aws_ecr_lifecycle_policy" "audio" {
           tagStatus   = "any"
           countType   = "imageCountMoreThan"
           countNumber = var.ecr_tag_retention_count
+        }
+        action = { type = "expire" }
+      }
+    ]
+  })
+}
+
+# Mirrors deliberately do NOT use the count-based rule above. Expiring a mirrored
+# tag by age would delete an image that a pinned workload still references, and the
+# breakage would surface at the next CronJob schedule rather than at apply time.
+# Untagged layers (failed or superseded pushes) are safe to reap.
+resource "aws_ecr_lifecycle_policy" "mirror" {
+  for_each = aws_ecr_repository.mirror
+
+  repository = each.value.name
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Expire untagged images after 7 days"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 7
         }
         action = { type = "expire" }
       }
@@ -116,7 +177,10 @@ data "aws_iam_policy_document" "github_actions_ecr_publish" {
       "ecr:PutImage",
       "ecr:UploadLayerPart",
     ]
-    resources = [for repository in aws_ecr_repository.audio : repository.arn]
+    resources = concat(
+      [for repository in aws_ecr_repository.audio : repository.arn],
+      [for repository in aws_ecr_repository.mirror : repository.arn],
+    )
   }
 }
 
@@ -146,7 +210,12 @@ data "aws_iam_policy_document" "worker_ecr_pull" {
       "ecr:BatchGetImage",
       "ecr:GetDownloadUrlForLayer",
     ]
-    resources = [for repository in aws_ecr_repository.audio : repository.arn]
+    # Without the mirror ARNs here the loadtest CronJobs get ImagePullBackOff --
+    # and only at their next schedule, long after the apply that "succeeded".
+    resources = concat(
+      [for repository in aws_ecr_repository.audio : repository.arn],
+      [for repository in aws_ecr_repository.mirror : repository.arn],
+    )
   }
 }
 
